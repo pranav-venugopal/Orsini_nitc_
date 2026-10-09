@@ -9,8 +9,8 @@ export default function ChatMessage({ m }: { m: Msg }) {
   const tone = user ? "bg-brand text-white ring-cyan-700 shadow-[0_12px_28px_rgba(8,39,58,0.14)]" : m.clientError || r?.status === "error" ? "surface-glass text-text ring-rose-300" : r?.status === "blocked" || r?.action === "redacted" ? "surface-glass text-text ring-amber-300" : "surface-glass text-text ring-edge shadow-[0_12px_28px_rgba(27,77,92,0.08)]";
   return (
     <div className={`flex items-end gap-3 ${user ? "justify-end" : "justify-start"}`}>
-      {!user && <div className="mb-1 hidden size-8 shrink-0 place-items-center border border-edge bg-panel/75 text-accent sm:grid"><ShieldCheck size={17} /></div>}
-      <article className={`max-w-[88%] rounded-lg px-4 py-3 ring-1 md:max-w-[75%] ${tone}`}>
+      {!user && <div className="brand-mark mb-1 hidden size-8 shrink-0 place-items-center rounded-xl sm:grid"><ShieldCheck size={16} /></div>}
+      <article className={`max-w-[92%] rounded-[22px] px-4 py-3.5 ring-1 sm:max-w-[88%] md:max-w-[78%] ${tone}`}>
         {r && r.status !== "completed" && (
           <p className={`mb-1 text-xs font-semibold ${r.status === "error" ? "text-status-error" : "text-status-warn"}`}>
             {r.status === "blocked" ? "Blocked by safety check" : r.status === "error" ? "Safety check error" : "Needs review"}

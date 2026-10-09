@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import Lenis from "lenis";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
-import AppSidebar from "../components/AppSidebar";
-import ThemeToggle from "../components/ThemeToggle";
+import WorkspaceNav from "../components/AppSidebar";
 import HomePage from "../pages/HomePage";
 import LoginPage from "../pages/LoginPage";
+import SignupPage from "../pages/SignupPage";
 import ChatPage from "../pages/ChatPage";
 import RedTeamPage from "../pages/RedTeamPage";
 import SecurityDashboardPage from "../pages/SecurityDashboardPage";
@@ -43,13 +43,10 @@ function WorkspaceLayout({ theme, onToggleTheme, user, onSignOut }: {
   }, []);
 
   return (
-    <div className="relative z-10 flex h-screen flex-col overflow-hidden md:flex-row">
-      <AppSidebar theme={theme} role={user.role} username={user.username} onToggleTheme={onToggleTheme} onSignOut={onSignOut} />
+    <div className="relative z-10 flex h-screen flex-col overflow-hidden">
+      <WorkspaceNav theme={theme} role={user.role} username={user.username} onToggleTheme={onToggleTheme} onSignOut={onSignOut} />
+      {mock && <p role="note" className="model-banner flex items-center justify-center gap-2 border-b border-edge px-4 py-2 text-center text-xs backdrop-blur"><span className="size-1.5 shrink-0 rounded-full bg-cyan-600" /> Stand-in models are active. Answers and safety labels are placeholders until Qwen and Llama Guard are connected.</p>}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="hidden h-14 shrink-0 items-center justify-end border-b border-edge/60 bg-panel/55 px-6 md:flex">
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-        </header>
-        {mock && <p role="note" className="model-banner flex items-center gap-2 border-b border-edge px-4 py-2 text-xs backdrop-blur"><span className="size-1.5 bg-cyan-600" /> Stand-in models are active. Answers and safety labels are placeholders until Qwen and Llama Guard are connected.</p>}
         <div ref={scrollWrapper} className="min-h-0 flex-1 overflow-y-auto">
           <div ref={scrollContent} className="h-full min-h-full"><Outlet /></div>
         </div>
@@ -81,6 +78,11 @@ export default function App() {
     setUser(signedInUser);
     return signedInUser;
   };
+  const signUp = async (username: string, password: string) => {
+    const signedUpUser = await api.register(username, password);
+    setUser(signedUpUser);
+    return signedUpUser;
+  };
   const signOut = () => { clearSession(); setUser(null); };
   const toggleTheme = () => setTheme((current) => current === "dark" ? "light" : "dark");
 
@@ -88,6 +90,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={!sessionReady ? <SessionLoading /> : user ? <Navigate to="/chat" replace /> : <HomePage theme={theme} onToggleTheme={toggleTheme} />} />
       <Route path="/login" element={!sessionReady ? <SessionLoading /> : user ? <Navigate to="/chat" replace /> : <LoginPage theme={theme} onToggleTheme={toggleTheme} onLogin={signIn} />} />
+      <Route path="/signup" element={!sessionReady ? <SessionLoading /> : user ? <Navigate to="/chat" replace /> : <SignupPage theme={theme} onToggleTheme={toggleTheme} onSignUp={signUp} />} />
       <Route element={!sessionReady ? <SessionLoading /> : user ? <WorkspaceLayout theme={theme} onToggleTheme={toggleTheme} user={user} onSignOut={signOut} /> : <Navigate to="/login" replace />}>
         <Route path="chat" element={<ChatPage />} />
         <Route path="dashboard" element={user?.role === "admin" ? <SecurityDashboardPage /> : <Navigate to="/chat" replace />} />

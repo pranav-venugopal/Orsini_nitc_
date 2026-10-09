@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import tempfile
 
 from fastapi import FastAPI
@@ -40,8 +41,37 @@ def test_login_roles_and_admin_api_gate():
     assert c.post("/chat", json={"message": "hello", "mode": "baseline"}, headers=headers(member_token)).status_code == 403
     assert c.get("/security/metrics", headers=headers(member_token)).status_code == 403
     assert c.get("/security/events", headers=headers(member_token)).status_code == 403
+    assert c.get("/security/diagnostics", headers=headers(member_token)).status_code == 403
     assert c.get("/redteam/prompts", headers=headers(member_token)).status_code == 403
     assert c.get("/security/metrics", headers=headers()).status_code == 200
+    diagnostics = c.get("/security/diagnostics", headers=headers())
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["mock_models"] is True
+
+
+def test_member_registration_password_policy_and_role_gate():
+    payload = {"username": "new.member", "password": "SafePassword#2026"}
+    response = c.post("/auth/register", json=payload)
+    assert response.status_code == 201
+    created = response.json()
+    assert created["user"] == {"username": "new.member", "role": "member"}
+    with sqlite3.connect(settings.db_path) as connection:
+        stored_hash = connection.execute(
+            "SELECT password_hash FROM registered_users WHERE username = ?",
+            ("new.member",),
+        ).fetchone()[0]
+    assert payload["password"] not in stored_hash and stored_hash.startswith("pbkdf2_sha256$")
+    assert c.get("/auth/me", headers=headers(created["access_token"])).status_code == 200
+    assert c.get("/security/metrics", headers=headers(created["access_token"])).status_code == 403
+
+    duplicate = c.post("/auth/register", json=payload)
+    assert duplicate.status_code == 409
+    assert c.post("/auth/register", json={"username": "bad name", "password": "SafePassword#2026"}).status_code == 422
+    assert c.post("/auth/register", json={"username": "weakpass", "password": "alllowercase123"}).status_code == 422
+
+    login_response = c.post("/auth/login", json=payload)
+    assert login_response.status_code == 200
+    assert login_response.json()["user"]["role"] == "member"
 
 
 def test_login_reports_missing_environment_configuration(monkeypatch):
@@ -67,10 +97,14 @@ def test_output_block():
     assert r["status"] == "blocked" and r["action"] == "blocked_output"
 
 
-def test_sensitive_output_is_redacted_and_only_metadata_is_logged():
+def test_sensitive_output_is_redacted_and_only_metadata_is_logged(monkeypatch):
     email = "demo.user@example.com"
     secret = "abcDEF0123456789"
-    r = chat(f"Reply with {email} and api_key={secret}")
+    monkeypatch.setattr(
+        "app.pipeline.generator.generate",
+        lambda _message: f"Reply with {email} and api_key={secret}",
+    )
+    r = chat("Give a short greeting.")
     assert r["status"] == "completed" and r["action"] == "redacted"
     assert email not in r["answer"] and secret not in r["answer"]
     assert "[REDACTED_EMAIL]" in r["answer"] and "[REDACTED_SECRET]" in r["answer"]
@@ -78,6 +112,56 @@ def test_sensitive_output_is_redacted_and_only_metadata_is_logged():
     page = c.get("/security/events?stage=output&action=redacted&limit=5", headers=headers()).json()
     assert page["total"] >= 1
     assert email not in str(page["items"]) and secret not in str(page["items"])
+
+
+def test_sensitive_input_is_redacted_before_generation_and_only_metadata_is_logged(monkeypatch):
+    email = "private.person@example.com"
+    secret = "abcDEF0123456789"
+    generated_prompts = []
+
+    def generate(message):
+        generated_prompts.append(message)
+        return "I can help with that."
+
+    monkeypatch.setattr("app.pipeline.generator.generate", generate)
+    response = c.post(
+        "/chat",
+        json={"message": f"Please greet {email}; api_key={secret}"},
+        headers=headers(),
+    )
+
+    assert response.status_code == 200
+    assert generated_prompts == [
+        "Please greet [REDACTED_EMAIL]; api_key=[REDACTED_SECRET]"
+    ]
+    assert response.json()["input_check"] == {
+        "label": "safe",
+        "categories": ["email", "secret"],
+    }
+    page = c.get(
+        "/security/events?stage=input&action=redacted&limit=5",
+        headers=headers(),
+    ).json()
+    assert page["total"] >= 1
+    assert email not in str(page["items"]) and secret not in str(page["items"])
+
+
+def test_valid_credit_card_is_redacted_but_non_luhn_digits_are_not():
+    response = c.post(
+        "/chat",
+        json={
+            "message": (
+                "Card 4111 1111 1111 1111 and reference "
+                "1234567890123456"
+            )
+        },
+        headers=headers(),
+    )
+
+    assert response.status_code == 200
+    assert "4111 1111 1111 1111" not in response.json()["answer"]
+    assert "[REDACTED_CREDIT_CARD]" in response.json()["answer"]
+    assert "1234567890123456" in response.json()["answer"]
 
 
 def test_classifier_error_is_not_safe():
@@ -144,3 +228,16 @@ def test_chat_rate_limit_is_enforced(monkeypatch):
     limited_client = TestClient(RequestLimitsMiddleware(target))
     assert limited_client.post("/chat").status_code == 200
     assert limited_client.post("/chat").status_code == 429
+
+
+def test_auth_rate_limit_is_enforced(monkeypatch):
+    target = FastAPI()
+
+    @target.post("/auth/register")
+    def register_endpoint():
+        return {"status": "ok"}
+
+    monkeypatch.setattr(settings, "auth_rate_limit", 1)
+    limited_client = TestClient(RequestLimitsMiddleware(target))
+    assert limited_client.post("/auth/register").status_code == 200
+    assert limited_client.post("/auth/register").status_code == 429

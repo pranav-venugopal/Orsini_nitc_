@@ -4,16 +4,38 @@ import EventsTable from "../components/EventsTable";
 import MetricCard from "../components/MetricCard";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { api, ApiError } from "../services/api";
-import type { EventsPage, Metrics } from "../types/api";
+import type { EventsPage, Metrics, ModelDiagnostics, RuntimeDiagnostics } from "../types/api";
 
 const PAGE = 25;
 const SectionScene = lazy(() => import("../components/SectionScene"));
 const sel = "rounded-xl border border-edge/70 bg-panel/65 px-4 py-2.5 text-sm text-text shadow-sm outline-none backdrop-blur-lg transition-colors focus:border-cyan-600";
 const percent = (rate: number | null) => rate === null ? "—" : `${(rate * 100).toFixed(1)}%`;
 
+function ModelStatus({ title, model }: { title: string; model: RuntimeDiagnostics }) {
+  const placement = model.device_map
+    ? Object.entries(model.device_map).map(([name, device]) => `${name}: ${device}`).join(", ")
+    : "Not loaded yet";
+  return (
+    <div className="min-w-0 rounded-2xl border border-edge/70 bg-panel/60 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-medium text-text">{title}</h3>
+        <span className={model.loaded ? "text-xs text-emerald-500" : "text-xs text-mute"}>
+          {model.loaded ? "Loaded" : "Not loaded"}
+        </span>
+      </div>
+      <p className="mt-2 break-all text-xs text-mute">{model.model_id}</p>
+      <p className="mt-2 break-words text-xs text-mute">{placement}</p>
+      {model.dtype && <p className="mt-1 text-xs text-mute">Data type: {model.dtype}</p>}
+      {model.last_error && <p className="mt-2 text-xs text-amber-500">Last load error: {model.last_error}</p>}
+    </div>
+  );
+}
+
 export default function SecurityDashboardPage() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [page, setPage] = useState<EventsPage | null>(null);
+  const [diagnostics, setDiagnostics] = useState<ModelDiagnostics | null>(null);
+  const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState("");
   const [action, setAction] = useState("");
@@ -29,7 +51,17 @@ export default function SecurityDashboardPage() {
     }
   }, [offset, stage, action]);
 
+  const loadDiagnostics = useCallback(async () => {
+    setDiagnosticsError(null);
+    try {
+      setDiagnostics(await api.modelDiagnostics());
+    } catch (err) {
+      setDiagnosticsError(err instanceof ApiError ? err.message : "Unable to load model diagnostics.");
+    }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadDiagnostics(); }, [loadDiagnostics]);
 
   return (
     <div className="page-enter mx-auto max-w-6xl space-y-8 px-4 py-6 md:px-8 md:py-9">
@@ -39,13 +71,41 @@ export default function SecurityDashboardPage() {
             <p className="mb-2 text-[10px] uppercase text-mute">Live telemetry / policy outcomes</p>
             <h1 className="display-title font-display text-5xl uppercase leading-[1.02] text-text md:text-6xl">Security monitor</h1>
           </div>
-          <button onClick={load} className="inline-flex h-11 items-center gap-2 rounded-full bg-brand px-5 text-sm font-medium text-white shadow-lg shadow-cyan-950/15 hover:bg-brand-hover"><RefreshCw size={15} /> Refresh</button>
+          <button onClick={() => { load(); loadDiagnostics(); }} className="inline-flex h-11 items-center gap-2 rounded-full bg-brand px-5 text-sm font-medium text-white shadow-lg shadow-cyan-950/15 hover:bg-brand-hover"><RefreshCw size={15} /> Refresh</button>
         </div>
         <Suspense fallback={<div className="section-scene section-scene-monitor h-[190px] w-full rounded-[28px] sm:h-[220px] md:h-[270px]" />}>
           <SectionScene mode="monitor" />
         </Suspense>
       </div>
-      {error ? <ErrorState message={error} onRetry={load} /> : !metrics || !page ? <LoadingState /> : (
+      {diagnosticsError && <p role="alert" className="rounded-2xl border border-rose-500/30 bg-rose-500/5 p-4 text-sm text-rose-500">Model diagnostics unavailable: {diagnosticsError}</p>}
+      {diagnostics?.model_mode === "local" && !diagnosticsError && (
+          <section aria-labelledby="model-diagnostics" className="rounded-[26px] border border-edge/70 bg-panel/65 p-5 shadow-lg shadow-slate-950/5 backdrop-blur-xl">
+            <div className="flex flex-wrap items-baseline justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase text-mute">Local inference</p>
+                <h2 id="model-diagnostics" className="mt-1 font-display text-2xl uppercase text-text">Model diagnostics</h2>
+              </div>
+              <span className="rounded-full border border-edge px-3 py-1 text-xs text-mute">
+                {diagnostics.cuda_available
+                  ? `CUDA · ${diagnostics.gpu_name ?? "GPU"}`
+                  : diagnostics.cuda_available === false ? "CPU inference" : "Runtime unavailable"}
+              </span>
+            </div>
+            {!diagnostics.runtime_available && diagnostics.runtime_message && (
+              <p className="mt-4 text-sm text-amber-500">{diagnostics.runtime_message}</p>
+            )}
+            {diagnostics.cuda_available && (
+              <p className="mt-3 text-xs text-mute">
+                GPU memory: {diagnostics.gpu_memory_allocated_gib ?? "—"} GiB allocated · {diagnostics.gpu_memory_reserved_gib ?? "—"} GiB reserved
+              </p>
+            )}
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <ModelStatus title="Answer model" model={diagnostics.generator} />
+              <ModelStatus title="Safety model" model={diagnostics.guard} />
+            </div>
+          </section>
+        )}
+        {error ? <ErrorState message={error} onRetry={load} /> : !metrics || !page ? <LoadingState /> : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
             <MetricCard label="Requests checked" value={String(metrics.total_requests)} />

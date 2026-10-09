@@ -1,9 +1,13 @@
-import type { ChatResponse, EventsPage, Health, LoginResponse, Metrics, Mode, RedTeamPrompt, SessionUser } from "../types/api";
+import type { ChatResponse, EventsPage, Health, LoginResponse, Metrics, Mode, ModelDiagnostics, RedTeamPrompt, SessionUser } from "../types/api";
 
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 const SESSION_KEY = "secure-ai-access-token";
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  constructor(message: string, readonly field?: string) {
+    super(message);
+  }
+}
 
 function storedToken() {
   return typeof window === "undefined" ? null : window.sessionStorage.getItem(SESSION_KEY);
@@ -26,8 +30,16 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 60000): 
     if (token) headers.set("Authorization", `Bearer ${token}`);
     const res = await fetch(`${BASE}${path}`, { ...init, headers, signal: ctrl.signal });
     if (!res.ok) {
-      const payload = await res.json().catch(() => null) as { detail?: string } | null;
-      throw new ApiError(payload?.detail ?? `The server returned an error (${res.status}).`);
+      const payload = await res.json().catch(() => null) as { detail?: unknown; field?: string } | null;
+      const details = Array.isArray(payload?.detail) ? payload.detail : null;
+      const firstDetail = details?.[0] as { loc?: unknown[]; msg?: string } | undefined;
+      const message = typeof payload?.detail === "string"
+        ? payload.detail
+        : firstDetail?.msg ?? `The server returned an error (${res.status}).`;
+      const location = firstDetail?.loc;
+      const locationField = location?.[location.length - 1];
+      const field = payload?.field ?? (typeof locationField === "string" ? locationField : undefined);
+      throw new ApiError(message, field);
     }
     return (await res.json()) as T;
   } catch (e) {
@@ -52,18 +64,28 @@ export const api = {
     window.sessionStorage.setItem(SESSION_KEY, result.access_token);
     return result.user;
   },
+  async register(username: string, password: string): Promise<SessionUser> {
+    const result = await request<LoginResponse>("/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    }, 10000);
+    window.sessionStorage.setItem(SESSION_KEY, result.access_token);
+    return result.user;
+  },
   me: () => request<SessionUser>("/auth/me", undefined, 8000),
   async chat(message: string, conversationId: string | null, mode: Mode = "guarded"): Promise<ChatResponse> {
     const r = await request<ChatResponse>("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message, conversation_id: conversationId, mode }),
-    });
+    }, 600000);
     if (!r || typeof r.answer !== "string" || !VALID_STATUS.includes(r.status))
       throw new ApiError("The server sent a response the app doesn't understand.");
     return r;
   },
   metrics: () => request<Metrics>("/security/metrics", undefined, 10000),
+  modelDiagnostics: () => request<ModelDiagnostics>("/security/diagnostics", undefined, 10000),
   events: (p: { limit: number; offset: number; stage?: string; action?: string }) => {
     const q = new URLSearchParams({ limit: String(p.limit), offset: String(p.offset) });
     if (p.stage) q.set("stage", p.stage);
