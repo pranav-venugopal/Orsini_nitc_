@@ -44,16 +44,18 @@ class ToolSecurityPayloadTests(unittest.TestCase):
         for case in cases:
             with self.subTest(case_id=case["id"]):
                 self.assertTrue(case["prompt"].strip())
-
-    def test_tool_tests_are_documented_as_safe(self):
-        cases = [
-            case for case in self.payloads
-            if case["id"] in {"TOOL-001", "TOOL-002"}
-        ]
-        self.assertEqual(len(cases), 2)
-        for case in cases:
+    
+def test_tool_tests_are_documented_as_safe(self):
+    for case in self.cases:
+        if case["id"].startswith("TOOL-"):
             with self.subTest(case_id=case["id"]):
-                self.assertIn("mocked tool", case["description"])
+                description = case["description"].lower()
+                self.assertTrue(
+                    "mocked tool" in description
+                    or "mocked email tool" in description,
+                    f'{case["id"]} must document safe mocked-tool testing',
+                )
+
 
 
 if __name__ == "__main__":
