@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     member_password: str | None = None
     jwt_secret: str = Field(default_factory=lambda: secrets.token_urlsafe(48), min_length=32)
     access_token_minutes: int = Field(default=480, gt=0)
+    groq_api_key: str | None = None
 
     @field_validator("model_mode", mode="before")
     @classmethod
@@ -30,8 +31,8 @@ class Settings(BaseSettings):
         mode = value.strip().lower()
         if mode == "real":
             return "local"
-        if mode not in {"mock", "local"}:
-            raise ValueError("MODEL_MODE must be 'mock' or 'local'.")
+        if mode not in {"mock", "local", "groq"}:
+            raise ValueError("MODEL_MODE must be 'mock', 'local', or 'groq'.")
         return mode
 
     @property

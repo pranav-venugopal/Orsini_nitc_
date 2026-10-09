@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import logging
 import re
 import time
 import unicodedata
@@ -18,6 +19,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
 from typing import Callable, Optional
+
+
+logger = logging.getLogger("guardrails_engine")
 
 
 # ───────────────────────── Core types ─────────────────────────
@@ -682,30 +686,92 @@ class LlamaGuardClassifier(Guard):
         "S1": "violent_crimes", "S2": "nonviolent_crimes", "S3": "sex_crimes", "S4": "child_exploitation",
         "S5": "defamation", "S6": "specialized_advice", "S7": "privacy", "S8": "intellectual_property",
         "S9": "indiscriminate_weapons", "S10": "hate", "S11": "self_harm", "S12": "sexual_content",
-        "S13": "elections", "S14": "code_interpreter_abuse",
+        "S13": "elections",
     }
 
     def __init__(self, model_id="meta-llama/Llama-Guard-3-1B", max_new_tokens=20, device_map="auto"):
         self.model_id, self.max_new_tokens, self.device_map = model_id, max_new_tokens, device_map
         self._tok = self._model = None
+        self._load_error: str | None = None
+        self._last_inference_error: str | None = None
 
     def _load(self):
-        if self._model is None:
+        if self._model is not None:
+            return
+        if self._load_error is not None:
+            raise RuntimeError(self._load_error)
+        try:
             from transformers import AutoModelForCausalLM, AutoTokenizer
-            print(f"Loading {self.model_id}...")
+            logger.info("Loading safety classifier: %s", self.model_id)
             self._tok = AutoTokenizer.from_pretrained(self.model_id)
             self._model = AutoModelForCausalLM.from_pretrained(
-                self.model_id, torch_dtype="auto", device_map=self.device_map).eval()
+                self.model_id,
+                torch_dtype="auto",
+                device_map=self.device_map,
+                low_cpu_mem_usage=True,
+            ).eval()
+            logger.info("Safety classifier is ready: %s", self.model_id)
+        except Exception as exc:  # noqa: BLE001
+            self._load_error = f"{type(exc).__name__}: {exc}"
+            logger.exception("Safety classifier failed to load: %s", self.model_id)
+            raise
+
+    def readiness(self) -> dict[str, object]:
+        if self._model is not None:
+            result = {"ready": True, "state": "ready", "model": self.model_id}
+            if self._last_inference_error is not None:
+                result["last_error"] = self._last_inference_error
+            return result
+        if self._load_error is not None:
+            return {
+                "ready": False,
+                "state": "unavailable",
+                "model": self.model_id,
+                "error": self._load_error.split(":", 1)[0],
+            }
+        return {"ready": False, "state": "not_loaded", "model": self.model_id}
 
     def _classify(self, turns: list[dict]) -> str:
         import torch
-        msgs = [{"role": t["role"], "content": [{"type": "text", "text": t["content"]}]} for t in turns]
+        # Llama Guard 3's template expects multimodal-style text-content turns.
+        msgs = [
+            {"role": t["role"], "content": [{"type": "text", "text": t["content"]}]}
+            for t in turns
+        ]
         inputs = self._tok.apply_chat_template(
-            msgs, tokenize=True, add_generation_prompt=True,
-            return_tensors="pt", return_dict=True).to(self._model.device)
-        with torch.no_grad():
-            out = self._model.generate(**inputs, max_new_tokens=self.max_new_tokens, do_sample=False)
+            msgs,
+            tokenize=True,
+            add_generation_prompt=False,
+            return_tensors="pt",
+            return_dict=True,
+        ).to(self._model.device)
+        with torch.inference_mode():
+            out = self._model.generate(
+                **inputs,
+                max_new_tokens=self.max_new_tokens,
+                do_sample=False,
+                pad_token_id=0,
+            )
         return self._tok.decode(out[0, inputs["input_ids"].shape[-1]:], skip_special_tokens=True).strip()
+
+    def _parse(self, raw: str) -> list[Finding]:
+        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+        if len(lines) == 1 and lines[0].lower() == "safe":
+            return []
+        if not lines:
+            return [Finding(self.name, Action.REVIEW, "empty_classifier_output", "system")]
+        if lines[0].lower() != "unsafe":
+            return [Finding(self.name, Action.REVIEW, "unrecognized_classifier_output", "system")]
+        if len(lines) != 2:
+            return [Finding(self.name, Action.REVIEW, "malformed_unsafe_classifier_output", "system")]
+
+        codes = [code.strip().upper() for code in lines[1].split(",") if code.strip()]
+        if not codes or any(code not in self.CATEGORIES for code in codes):
+            return [Finding(self.name, Action.REVIEW, "unrecognized_classifier_category", "system")]
+        return [
+            Finding(self.name, Action.BLOCK, f"unsafe_{self.CATEGORIES[code]}", self.CATEGORIES[code])
+            for code in dict.fromkeys(codes)
+        ]
 
     def check(self, text, stage, history):
         self._load()
@@ -723,17 +789,14 @@ class LlamaGuardClassifier(Guard):
                 clean[-1] = t
             else:
                 clean.append(t)
-        raw = self._classify(clean)
-        lines = raw.lower().splitlines()
-        if not lines:
-            return [Finding(self.name, Action.REVIEW, "empty_classifier_output")]
-        if lines[0].strip() == "safe":
-            return []
-        if lines[0].strip() == "unsafe":
-            codes = [c.strip().upper() for c in (lines[1].split(",") if len(lines) > 1 else [])]
-            cats = [self.CATEGORIES.get(c, c) for c in codes] or ["unspecified"]
-            return [Finding(self.name, Action.BLOCK, f"unsafe_{c}", c) for c in cats]
-        return [Finding(self.name, Action.REVIEW, "unrecognized_classifier_output")]
+        try:
+            findings = self._parse(self._classify(clean))
+            self._last_inference_error = None
+            return findings
+        except Exception as exc:  # noqa: BLE001
+            self._last_inference_error = type(exc).__name__
+            logger.exception("Safety classifier inference failed at %s stage", stage.value)
+            raise
 
 
 # ───────────────────────── Engine ─────────────────────────
@@ -751,10 +814,10 @@ class GuardrailsEngine:
         self.audit = audit
 
     @staticmethod
-    def default_guards(use_llama_guard=False) -> list[Guard]:
+    def default_guards(use_llama_guard=False, llama_guard_model_id="meta-llama/Llama-Guard-3-1B") -> list[Guard]:
         g = [LengthGuard(), PatternGuard(), InjectionGuard(), PIIGuard()]
         if use_llama_guard:
-            g.append(LlamaGuardClassifier())
+            g.append(LlamaGuardClassifier(model_id=llama_guard_model_id))
         return g
 
     def add(self, guard: Guard):

@@ -1,4 +1,6 @@
 
+import os
+
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -114,14 +116,14 @@ class MainLLM:
         return answer or "The model returned an empty response."
 
 
-from guardrails import Guard
-from llama_guard_validator import LlamaGuardSafety
-from guardrails_engine import GuardrailsAIGuard, Stage
-
 def main():
-    engine = GuardrailsEngine()
-    guard_ai = Guard().use(LlamaGuardSafety(on_fail="exception"))
-    engine.add(GuardrailsAIGuard(guard_ai, stages=[Stage.INPUT, Stage.OUTPUT]))
+    # Safety remains local and independent from the local generation model.
+    engine = GuardrailsEngine(
+        GuardrailsEngine.default_guards(
+            use_llama_guard=True,
+            llama_guard_model_id=os.getenv("LLAMA_GUARD_MODEL_ID", "meta-llama/Llama-Guard-3-1B"),
+        )
+    )
     
     llm = MainLLM()
 

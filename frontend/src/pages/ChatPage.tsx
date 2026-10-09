@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ChatComposer from "../components/ChatComposer";
 import ChatMessage from "../components/ChatMessage";
 import { PendingStatus } from "../components/SecurityStatus";
@@ -6,17 +6,34 @@ import { useChat } from "../hooks/useChat";
 
 export default function ChatPage() {
   const { messages, loading, send } = useChat();
+  const [modelId, setModelId] = useState("openai/gpt-oss-20b");
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  const handleSend = (text: string) => {
+    send(text, modelId);
+  };
 
   return (
     <div className="page-enter mx-auto flex h-full min-h-0 w-full max-w-4xl flex-col px-4 md:px-8">
       <div className="flex shrink-0 items-center justify-between gap-3 py-5">
         <div>
           <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.16em] text-accent">Private workspace</p>
-          <h1 className="font-display text-xl font-medium tracking-tight text-text sm:text-2xl">Aegis assistant</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="font-display text-xl font-medium tracking-tight text-text sm:text-2xl">Aegis assistant</h1>
+            <select
+              value={modelId}
+              onChange={(e) => setModelId(e.target.value)}
+              className="ml-2 rounded-md border border-edge/60 bg-panel/55 px-2 py-1 text-xs text-mute outline-none focus:border-cyan-500"
+              aria-label="Select Model"
+            >
+              <option value="openai/gpt-oss-20b">GPT OSS 20B (OpenAI)</option>
+              <option value="openai/gpt-oss-120b">GPT OSS 120B (OpenAI)</option>
+              <option value="qwen/qwen3.8-27b">Qwen 3.8 27B</option>
+            </select>
+          </div>
         </div>
         <span className="rounded-full border border-edge/60 bg-panel/55 px-3 py-1.5 text-[10px] text-mute backdrop-blur">Guarded mode</span>
       </div>
@@ -33,7 +50,7 @@ export default function ChatPage() {
         <div ref={end} />
       </div>
       <div className="shrink-0 pb-3">
-        <ChatComposer onSend={send} disabled={loading} />
+        <ChatComposer onSend={handleSend} disabled={loading} />
         <p className="mt-2 text-center text-[10px] text-mute/80">AI can make mistakes. Review important information before relying on it.</p>
       </div>
     </div>

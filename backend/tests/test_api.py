@@ -1,4 +1,5 @@
 import os
+import secrets
 import sqlite3
 import tempfile
 
@@ -14,10 +15,10 @@ from app.main import app  # noqa: E402
 from eval.run_eval import summarize_results  # noqa: E402
 
 settings.admin_username = "test-admin"
-settings.admin_password = "test-admin-password-123"
+settings.admin_password = secrets.token_urlsafe(24)
 settings.member_username = "test-member"
-settings.member_password = "test-member-password-123"
-settings.jwt_secret = "unit-test-session-secret-that-is-long-enough"
+settings.member_password = secrets.token_urlsafe(24)
+settings.jwt_secret = secrets.token_urlsafe(48)
 
 c = TestClient(app)
 admin_token = c.post("/auth/login", json={"username": settings.admin_username, "password": settings.admin_password}).json()["access_token"]
@@ -99,7 +100,7 @@ def test_output_block():
 
 def test_sensitive_output_is_redacted_and_only_metadata_is_logged(monkeypatch):
     email = "demo.user@example.com"
-    secret = "abcDEF0123456789"
+    secret = secrets.token_urlsafe(16)
     monkeypatch.setattr(
         "app.pipeline.generator.generate",
         lambda _message: f"Reply with {email} and api_key={secret}",
@@ -116,7 +117,7 @@ def test_sensitive_output_is_redacted_and_only_metadata_is_logged(monkeypatch):
 
 def test_sensitive_input_is_redacted_before_generation_and_only_metadata_is_logged(monkeypatch):
     email = "private.person@example.com"
-    secret = "abcDEF0123456789"
+    secret = secrets.token_urlsafe(16)
     generated_prompts = []
 
     def generate(message):

@@ -74,11 +74,11 @@ export const api = {
     return result.user;
   },
   me: () => request<SessionUser>("/auth/me", undefined, 8000),
-  async chat(message: string, conversationId: string | null, mode: Mode = "guarded"): Promise<ChatResponse> {
+  async chat(message: string, conversationId: string | null, mode: Mode = "guarded", modelId?: string): Promise<ChatResponse> {
     const r = await request<ChatResponse>("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, conversation_id: conversationId, mode }),
+      body: JSON.stringify({ message, conversation_id: conversationId, mode, model_id: modelId }),
     }, 600000);
     if (!r || typeof r.answer !== "string" || !VALID_STATUS.includes(r.status))
       throw new ApiError("The server sent a response the app doesn't understand.");

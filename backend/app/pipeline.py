@@ -20,6 +20,10 @@ def _build():
         from .generator import QwenGenerator
         from .guard import LlamaGuard
         return LlamaGuard(settings.guard_model_id), QwenGenerator(settings.qwen_model_id), False
+    elif settings.model_mode == "groq":
+        from .generator import GroqGenerator
+        from .guard import GroqGuard
+        return GroqGuard("meta-llama/llama-prompt-guard-2-86m"), GroqGenerator(), False
     from .generator import MockGenerator
     from .guard import MockGuard
     return MockGuard(), MockGenerator(), True
@@ -72,6 +76,12 @@ def _check(text: str, role: str, context: str | None = None) -> Check:
         return Check(label="error")  # never silently safe
 
 
+def _generate(message: str, model_id: str | None) -> str:
+    if model_id is None:
+        return generator.generate(message)
+    return generator.generate(message, model_id=model_id)
+
+
 def run_chat(req: ChatRequest) -> ChatResponse:
     rid = f"req_{uuid.uuid4().hex[:10]}"
     t0 = time.perf_counter()
@@ -88,7 +98,7 @@ def run_chat(req: ChatRequest) -> ChatResponse:
 
     if req.mode == "baseline":
         try:
-            return done("completed", generator.generate(req.message), "returned_unchecked")
+            return done("completed", _generate(req.message, req.model_id), "returned_unchecked")
         except Exception:
             logger.exception("Baseline model generation failed")
             return done("error", ERROR_MSG, "error")
@@ -109,7 +119,7 @@ def run_chat(req: ChatRequest) -> ChatResponse:
         events.log_event(rid, "input", "safe", [], "passed", ms(t))
 
     try:
-        answer = generator.generate(sanitized_message)
+        answer = _generate(sanitized_message, req.model_id)
     except Exception:
         logger.exception("Guarded model generation failed")
         return done("error", ERROR_MSG, "error", ic=ic)

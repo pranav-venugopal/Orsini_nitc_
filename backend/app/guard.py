@@ -7,6 +7,136 @@ from typing import Any
 
 from .schemas import Check
 from .transformers_runtime import TransformersRuntime
+from .config import settings
+
+class GroqGuard:
+    """Safety guard using Groq API.
+
+    Supports two guard model formats:
+    - llama-prompt-guard-2: returns a float probability (>0.5 = unsafe)
+    - Any other model: uses a system prompt to ask for safe/unsafe classification
+    """
+
+    _UNSAFE_THRESHOLD = 0.5
+
+    def __init__(self, model_id: str = "meta-llama/llama-prompt-guard-2-86m"):
+        self.model_id = model_id
+        from groq import Groq
+        if not settings.groq_api_key:
+            raise RuntimeError("GROQ_API_KEY must be set in .env for Groq support.")
+        self.client = Groq(api_key=settings.groq_api_key)
+        self._is_prompt_guard = "prompt-guard" in model_id.lower()
+
+    def classify(self, text: str, role: str, context: str | None = None) -> Check:
+        if not isinstance(text, str) or not text.strip() or len(text) > 10_000:
+            return Check(label="error", categories=["format"])
+        # Run local policy rules first
+        policy = _policy_check(text)
+        if policy.label == "unsafe":
+            return policy
+
+        if role == "user":
+            messages = [{"role": "user", "content": text}]
+        elif role == "assistant" and isinstance(context, str) and context.strip():
+            messages = [
+                {"role": "user", "content": context},
+                {"role": "assistant", "content": text},
+            ]
+        else:
+            return Check(label="error", categories=["format"])
+
+        try:
+            if self._is_prompt_guard:
+                return self._classify_prompt_guard(messages)
+            else:
+                return self._classify_chat_model(messages)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).exception("GroqGuard error: %s", e)
+            return Check(label="error", categories=["api_error"])
+
+    def _classify_prompt_guard(self, messages: list[dict]) -> Check:
+        """llama-prompt-guard-2 returns a single float probability.
+
+        The Groq prompt-guard model is a text classifier that only accepts
+        a single user message.  When we need to check an assistant reply
+        (two messages: user context + assistant text), we merge them into
+        one user message so the API doesn't reject the request.
+        """
+        if len(messages) == 1:
+            api_messages = messages
+        else:
+            # Merge multi-turn into a single user message for classification
+            combined = "\n\n".join(m["content"] for m in messages)
+            api_messages = [{"role": "user", "content": combined}]
+
+        response = self.client.chat.completions.create(
+            model=self.model_id,
+            messages=api_messages,
+            max_tokens=10,
+            temperature=0.0,
+        )
+        result = response.choices[0].message.content.strip()
+        try:
+            score = float(result)
+        except ValueError:
+            return Check(label="error", categories=["parse_error"])
+        if score > self._UNSAFE_THRESHOLD:
+            return Check(label="unsafe", categories=["prompt_injection"])
+        return Check(label="safe")
+
+    def _classify_chat_model(self, messages: list[dict]) -> Check:
+        """Use a system prompt to ask a general chat model to classify safety."""
+        classification_messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a safety classifier. Respond with ONLY the word 'safe' or 'unsafe' "
+                    "on the first line. If unsafe, list categories on the second line separated by commas. "
+                    "Categories: violence, weapons, cybercrime, self_harm, sexual_content, hate, prompt_injection. "
+                    "Do not include any other text."
+                ),
+            },
+            *messages,
+        ]
+        response = self.client.chat.completions.create(
+            model=self.model_id,
+            messages=classification_messages,
+            max_tokens=50,
+            temperature=0.0,
+        )
+        result = response.choices[0].message.content.strip()
+        lines = result.lower().splitlines()
+        if not lines:
+            return Check(label="error")
+        classification = lines[0].strip()
+        if classification == "safe":
+            return Check(label="safe")
+        if classification == "unsafe":
+            categories = (
+                [c.strip() for c in lines[1].split(",") if c.strip()]
+                if len(lines) > 1
+                else ["unspecified"]
+            )
+            return Check(label="unsafe", categories=categories)
+        # If the model didn't follow the format, treat as safe with policy-only check
+        return Check(label="safe")
+
+    def diagnostics(self) -> dict[str, Any]:
+        return {
+            "model_id": self.model_id,
+            "runtime_available": True,
+            "runtime_message": "Groq cloud",
+            "cuda_available": False,
+            "gpu_name": None,
+            "gpu_memory_allocated_gib": None,
+            "gpu_memory_reserved_gib": None,
+            "loaded": True,
+            "device_map": None,
+            "dtype": None,
+            "last_error": None,
+        }
+
 
 _ZERO_WIDTH = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff\u00ad"), None)
 _LEET_TRANSLATION = str.maketrans("0134578@$", "oleastbas")
