@@ -19,7 +19,7 @@ from .config import settings
 Role = Literal["admin", "member"]
 _bearer = HTTPBearer(auto_error=False)
 _auth_lock = threading.Lock()
-_PASSWORD_ITERATIONS = 310_000
+_PBKDF2_WORK_FACTOR = 310_000
 
 
 class LoginRequest(BaseModel):
@@ -102,8 +102,8 @@ def _registered_user(username: str) -> tuple[str, str] | None:
 
 def _hash_password(password: str, salt: bytes | None = None) -> str:
     salt = salt or secrets.token_bytes(16)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _PASSWORD_ITERATIONS)
-    return f"pbkdf2_sha256${_PASSWORD_ITERATIONS}${salt.hex()}${digest.hex()}"
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, _PBKDF2_WORK_FACTOR)
+    return f"pbkdf2_sha256${_PBKDF2_WORK_FACTOR}${salt.hex()}${digest.hex()}"
 
 
 def _verify_password(password: str, password_hash: str) -> bool:
