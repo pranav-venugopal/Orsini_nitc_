@@ -49,6 +49,7 @@ cp .env.example .env
 npm run dev
 ```
 The frontend runs at http://localhost:5173. Set `VITE_API_BASE_URL=http://localhost:8000` in `frontend/.env`.
+The interface has a persisted light theme and Midnight Chrome dark theme. The chat hero uses `images/HEAD.jpg` as unfiltered artwork inside a lazily loaded, low-resolution Three.js scene; a static image remains visible when WebGL is unavailable. No separate GLB robot model is included.
 
 ## Try the demo states (mock mode)
 | Type this | You see |

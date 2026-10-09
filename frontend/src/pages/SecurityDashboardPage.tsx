@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import PageArtwork from "../components/PageArtwork";
 import EventsTable from "../components/EventsTable";
 import MetricCard from "../components/MetricCard";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
@@ -6,7 +8,7 @@ import { api, ApiError } from "../services/api";
 import type { EventsPage, Metrics } from "../types/api";
 
 const PAGE = 25;
-const sel = "rounded-lg border border-edge bg-panel px-2 py-1.5 text-sm";
+const sel = "border border-edge bg-panel/80 px-3 py-2 text-sm text-text outline-none transition-colors focus:border-cyan-600";
 const percent = (rate: number | null) => rate === null ? "—" : `${(rate * 100).toFixed(1)}%`;
 
 export default function SecurityDashboardPage() {
@@ -30,10 +32,16 @@ export default function SecurityDashboardPage() {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Security dashboard</h1>
-        <button onClick={load} className="rounded-lg border border-edge bg-node px-3 py-1.5 text-sm hover:border-accent">Refresh</button>
+    <div className="page-enter mx-auto max-w-6xl space-y-8 px-4 py-6 md:px-8 md:py-9">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-edge pb-5">
+        <div>
+          <p className="mb-2 text-[10px] uppercase text-mute">Live telemetry / policy outcomes</p>
+          <h1 className="font-display text-5xl uppercase leading-none text-text md:text-6xl">Security monitor</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <PageArtwork label="Threat telemetry" />
+          <button onClick={load} className="inline-flex h-10 items-center gap-2 bg-brand px-4 text-sm font-medium text-white hover:bg-brand-hover"><RefreshCw size={15} /> Refresh</button>
+        </div>
       </div>
       {error ? <ErrorState message={error} onRetry={load} /> : !metrics || !page ? <LoadingState /> : (
         <>
@@ -44,10 +52,10 @@ export default function SecurityDashboardPage() {
             <MetricCard label="Redactions" value={String(metrics.redactions)} />
             <MetricCard label="Average latency" value={metrics.average_latency_ms === null ? "—" : `${metrics.average_latency_ms} ms`} />
           </div>
-          <section aria-labelledby="eval" className="space-y-3">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 id="eval" className="font-medium">Baseline vs guarded evaluation</h2>
-              {metrics.evaluation_summary && <span className="text-sm text-mute">{metrics.evaluation_summary.dataset_cases} cases · {metrics.evaluation_summary.generated_at.replace("T", " ").slice(0, 19)} UTC</span>}
+          <section aria-labelledby="eval" className="space-y-4">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-l-2 border-cyan-500 pl-3">
+              <h2 id="eval" className="font-display text-3xl uppercase text-text">Baseline vs guarded evaluation</h2>
+              {metrics.evaluation_summary && <span className="text-xs text-mute">{metrics.evaluation_summary.dataset_cases} cases · {metrics.evaluation_summary.generated_at.replace("T", " ").slice(0, 19)} UTC</span>}
             </div>
             {metrics.evaluation_summary ? (
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -58,9 +66,9 @@ export default function SecurityDashboardPage() {
               </div>
             ) : <EmptyState title="No evaluation data" hint="Metrics appear after an evaluation run." />}
           </section>
-          <section aria-labelledby="ev" className="space-y-3">
+          <section aria-labelledby="ev" className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 id="ev" className="font-medium">Recent events</h2>
+              <h2 id="ev" className="border-l-2 border-cyan-500 pl-3 font-display text-3xl uppercase text-text">Recent events</h2>
               <div className="flex gap-2">
                 <label className="sr-only" htmlFor="fs">Stage</label>
                 <select id="fs" className={sel} value={stage} onChange={(e) => { setOffset(0); setStage(e.target.value); }}>
@@ -79,9 +87,9 @@ export default function SecurityDashboardPage() {
               : <EventsTable items={page.items} />}
             <div className="flex items-center justify-between text-sm text-mute">
               <span>{page.total === 0 ? "0 events" : `${offset + 1}–${Math.min(offset + PAGE, page.total)} of ${page.total}`}</span>
-              <div className="flex gap-2">
-                <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))} className="rounded-lg border border-edge px-3 py-1 disabled:opacity-40">Previous</button>
-                <button disabled={offset + PAGE >= page.total} onClick={() => setOffset(offset + PAGE)} className="rounded-lg border border-edge px-3 py-1 disabled:opacity-40">Next</button>
+              <div className="flex gap-1">
+                <button aria-label="Previous page" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE))} className="grid size-9 place-items-center border border-edge bg-panel/75 text-text hover:border-cyan-600 disabled:opacity-40"><ChevronLeft size={17} /></button>
+                <button aria-label="Next page" disabled={offset + PAGE >= page.total} onClick={() => setOffset(offset + PAGE)} className="grid size-9 place-items-center border border-edge bg-panel/75 text-text hover:border-cyan-600 disabled:opacity-40"><ChevronRight size={17} /></button>
               </div>
             </div>
           </section>

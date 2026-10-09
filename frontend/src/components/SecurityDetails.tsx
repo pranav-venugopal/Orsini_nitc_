@@ -4,8 +4,8 @@ const fmt = (c: Check | null) => (c === null ? "Not run" : `${c.label}${c.catego
 
 export default function SecurityDetails({ r }: { r: ChatResponse }) {
   return (
-    <details className="mt-2 text-xs text-mute">
-      <summary className="cursor-pointer select-none hover:text-text">Security details</summary>
+    <details className="mt-3 border-t border-current/10 pt-2 text-xs text-current/65">
+      <summary className="cursor-pointer select-none font-medium hover:text-cyan-800">Security details</summary>
       <dl className="mt-2 grid grid-cols-[auto,1fr] gap-x-4 gap-y-1">
         <dt>Request ID</dt><dd className="break-all">{r.request_id}</dd>
         <dt>Mode</dt><dd>{r.mode}</dd>

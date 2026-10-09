@@ -4,15 +4,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#050b16",      // page background
-        panel: "#0a1628",    // sidebar / cards
-        node: "#072a4d",     // raised surfaces (matches the pipeline diagram)
-        edge: "#1b3a5f",     // borders
-        text: "#cfe3fb",
-        mute: "#8aa4c4",
-        accent: "#5aa9ff",
+        ink: "rgb(var(--color-bg) / <alpha-value>)",
+        panel: "rgb(var(--color-surface) / <alpha-value>)",
+        node: "rgb(var(--color-raised) / <alpha-value>)",
+        edge: "rgb(var(--color-border) / <alpha-value>)",
+        text: "rgb(var(--color-text) / <alpha-value>)",
+        mute: "rgb(var(--color-muted) / <alpha-value>)",
+        accent: "rgb(var(--color-accent) / <alpha-value>)",
+        brand: "rgb(var(--color-brand) / <alpha-value>)",
+        "brand-hover": "rgb(var(--color-brand-hover) / <alpha-value>)",
+        "table-head": "rgb(var(--color-table-head) / <alpha-value>)",
+        "table-head-text": "rgb(var(--color-table-head-text) / <alpha-value>)",
+        "table-hover": "rgb(var(--color-table-hover) / <alpha-value>)",
       },
-      fontFamily: { sans: ['"IBM Plex Sans"', "system-ui", "Segoe UI", "sans-serif"] },
+      fontFamily: {
+        sans: ['"Space Grotesk"', "sans-serif"],
+        display: ['"Barlow Condensed"', "sans-serif"],
+      },
     },
   },
   plugins: [],
