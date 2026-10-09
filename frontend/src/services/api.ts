@@ -77,7 +77,7 @@ export const api = {
   async chat(message: string, conversationId: string | null, mode: Mode = "guarded", modelId?: string): Promise<ChatResponse> {
     const r = await request<ChatResponse>("/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
       body: JSON.stringify({ message, conversation_id: conversationId, mode, model_id: modelId }),
     }, 600000);
     if (!r || typeof r.answer !== "string" || !VALID_STATUS.includes(r.status))

@@ -8,11 +8,11 @@ from .auth import LoginRequest, LoginResponse, RegisterRequest, SessionUser, cur
 from .config import settings
 from .middleware import RequestLimitsMiddleware
 from .pipeline import MOCK, model_diagnostics, run_chat
-from .schemas import ChatRequest, ChatResponse, EventsPage, Metrics
+from .schemas import ChatHistoryPage, ChatRequest, ChatResponse, EventsPage, Metrics
 
 app = FastAPI(title="Secure AI Assistant API")
 app.add_middleware(RequestLimitsMiddleware)
-app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "Authorization"])
+app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_methods=["*"], allow_headers=["*"])
 events.init_db()
 init_auth_db()
 
@@ -50,7 +50,16 @@ def auth_me(user: SessionUser = Depends(current_user)):
 def chat(req: ChatRequest, user: SessionUser = Depends(current_user)):
     if req.mode == "baseline" and user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Baseline mode is restricted to administrators.")
-    return run_chat(req)
+    return run_chat(req, user.username)
+
+
+@app.get("/chat/history", response_model=ChatHistoryPage)
+def chat_history(
+    conversation_id: str | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    user: SessionUser = Depends(current_user),
+):
+    return {"items": events.list_chat_messages(user.username, conversation_id, limit)}
 
 
 @app.get("/security/metrics", response_model=Metrics)

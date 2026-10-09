@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     model_mode: str = "mock"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     db_path: str = "events.db"
+    database_url: str | None = None
+    redis_url: str | None = None
+    idempotency_ttl_seconds: int = Field(default=300, gt=0)
     qwen_model_id: str = "Qwen/Qwen2.5-3B-Instruct"
     guard_model_id: str = "meta-llama/Llama-Guard-3-1B"
     max_request_bytes: int = Field(default=16_384, gt=0)

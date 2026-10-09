@@ -37,21 +37,42 @@ export default function SignupPage({ theme, onToggleTheme, onSignUp }: {
   const requirements = passwordRequirements(password);
   const passwordIsValid = requirements.every((requirement) => requirement.valid);
   const usernameIsValid = USERNAME_PATTERN.test(username);
-  const confirmationError = confirmationTouched && confirmation !== password ? "Passwords don't match yet." : "";
+  const confirmationError = confirmationTouched
+    ? !confirmation
+      ? "Please confirm your password."
+      : confirmation !== password
+      ? "Passwords don't match."
+      : ""
+    : "";
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (pending) return;
     setUsernameTouched(true);
     setConfirmationTouched(true);
-    setUsernameError(usernameIsValid ? "" : "Use 3–32 letters, numbers, periods, underscores, or hyphens. Start and end with a letter or number.");
-    setPasswordError(passwordIsValid ? "" : "Meet every password requirement before continuing.");
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      setUsernameError("Username is required.");
+    } else if (!usernameIsValid) {
+      setUsernameError("Use 3–32 letters, numbers, periods, underscores, or hyphens. Start and end with a letter or number.");
+    } else {
+      setUsernameError("");
+    }
+
+    if (!password) {
+      setPasswordError("Password is required.");
+    } else if (!passwordIsValid) {
+      setPasswordError("Meet every password requirement before continuing.");
+    } else {
+      setPasswordError("");
+    }
+
     setFormError("");
-    if (!usernameIsValid || !passwordIsValid || confirmation !== password) return;
+    if (!trimmedUsername || !usernameIsValid || !password || !passwordIsValid || confirmation !== password) return;
 
     setPending(true);
     try {
-      await onSignUp(username, password);
+      await onSignUp(trimmedUsername, password);
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "Account creation was unsuccessful.";
       if (reason instanceof ApiError && reason.field === "username") setUsernameError(message);

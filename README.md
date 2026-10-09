@@ -24,8 +24,14 @@ python -m uvicorn api:app --reload --port 8001
 - Health check: http://127.0.0.1:8001/health
 
 ## Run the Full App Backend (`backend/`)
+The full app persists registered-account password hashes, sanitized security events, evaluation
+results, and redacted chat history in PostgreSQL. Redis provides shared request rate limiting and
+idempotency-key deduplication. Raw credentials remain only in `backend/.env`; the app never stores
+configured account passwords or raw unredacted messages.
+
 ### Windows PowerShell
 ```powershell
+docker compose --env-file backend/.env up -d
 Set-Location backend
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
@@ -37,6 +43,13 @@ Copy-Item .env.example .env
 # Set MODEL_MODE=local to enable local Qwen and Llama Guard inference.
 uvicorn app.main:app --reload --port 8000
 ```
+
+To stop the data services: `docker compose --env-file backend/.env down`. Add `-v` only when you
+intend to delete all local PostgreSQL and Redis data.
+
+The Docker images are downloaded from Docker Hub the first time this runs. If Compose reports a
+registry or authorization error, start Docker Desktop and retry once network access to Docker Hub
+is available.
 
 ### macOS/Linux
 ```bash
@@ -91,7 +104,7 @@ The public homepage is `/`; sign in at `/login` or create a member account at `/
 | `hello [demo-guard-error]` | safe error state (classifier failure is never shown as safe) |
 
 ## API
-`POST /auth/register` (member-only) · `POST /auth/login` · `GET /auth/me` · `POST /chat` · `GET /security/metrics` · `GET /security/events` · `GET /security/diagnostics` · `GET /redteam/prompts` · `GET /health`
+`POST /auth/register` (member-only) · `POST /auth/login` · `GET /auth/me` · `POST /chat` · `GET /chat/history` · `GET /security/metrics` · `GET /security/events` · `GET /security/diagnostics` · `GET /redteam/prompts` · `GET /health`
 Chat requires a signed-in member or admin. Monitoring, model diagnostics, events, and red-team prompt data require admin access. `/chat` also accepts `"mode": "baseline"` for the red-team comparison.
 
 ## Run the evaluation

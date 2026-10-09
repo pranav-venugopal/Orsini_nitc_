@@ -82,18 +82,23 @@ def _generate(message: str, model_id: str | None) -> str:
     return generator.generate(message, model_id=model_id)
 
 
-def run_chat(req: ChatRequest) -> ChatResponse:
+def run_chat(req: ChatRequest, username: str) -> ChatResponse:
     rid = f"req_{uuid.uuid4().hex[:10]}"
+    conversation_id = req.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
     t0 = time.perf_counter()
+    persisted_message, _ = redact_sensitive(req.message)
+    events.log_chat_message(rid, conversation_id, username, "user", persisted_message)
 
     def ms(since: float) -> int:
         return int((time.perf_counter() - since) * 1000)
 
     def done(status, answer, action, ic=None, oc=None):
-        resp = ChatResponse(request_id=rid, conversation_id=req.conversation_id, status=status, answer=answer,
-                            input_check=ic, output_check=oc, action=action, latency_ms=ms(t0),
-                            mode=req.mode, mock_models=MOCK)
+        resp = ChatResponse(request_id=rid, conversation_id=conversation_id, status=status, answer=answer,
+                             input_check=ic, output_check=oc, action=action, latency_ms=ms(t0),
+                             mode=req.mode, mock_models=MOCK)
         events.log_request(rid, status, req.mode, resp.latency_ms)
+        persisted_answer, _ = redact_sensitive(answer)
+        events.log_chat_message(rid, conversation_id, username, "assistant", persisted_answer)
         return resp
 
     if req.mode == "baseline":

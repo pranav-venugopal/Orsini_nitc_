@@ -4,7 +4,6 @@ import hmac
 import os
 import re
 import secrets
-import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -15,6 +14,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field, field_validator
 
 from .config import settings
+from . import database
 
 Role = Literal["admin", "member"]
 _bearer = HTTPBearer(auto_error=False)
@@ -61,21 +61,11 @@ class LoginResponse(BaseModel):
 
 
 def init_auth_db() -> None:
-    directory = os.path.dirname(os.path.abspath(settings.db_path))
-    os.makedirs(directory, exist_ok=True)
     with _auth_lock:
-        connection = sqlite3.connect(settings.db_path, timeout=10)
-        try:
-            with connection:
-                connection.execute(
-                    """CREATE TABLE IF NOT EXISTS registered_users (
-                        username TEXT PRIMARY KEY COLLATE NOCASE,
-                        password_hash TEXT NOT NULL,
-                        created_at TEXT NOT NULL
-                    )"""
-                )
-        finally:
-            connection.close()
+        if not database.using_postgres():
+            directory = os.path.dirname(os.path.abspath(settings.db_path))
+            os.makedirs(directory, exist_ok=True)
+        database.init_auth_schema()
 
 
 def _configured_accounts() -> list[tuple[str, str, Role]]:
@@ -89,15 +79,14 @@ def _configured_accounts() -> list[tuple[str, str, Role]]:
 
 def _registered_user(username: str) -> tuple[str, str] | None:
     with _auth_lock:
-        connection = sqlite3.connect(settings.db_path, timeout=10)
-        try:
-            row = connection.execute(
-                "SELECT username, password_hash FROM registered_users WHERE username = ?",
-                (username,),
-            ).fetchone()
-            return (str(row[0]), str(row[1])) if row else None
-        finally:
-            connection.close()
+        with database.connection() as connection:
+            with connection.cursor() if database.using_postgres() else connection as cursor:
+                row = database.execute(
+                    cursor,
+                    "SELECT username, password_hash FROM registered_users WHERE lower(username) = lower(?)",
+                    (username,),
+                ).fetchone()
+    return (str(row["username"]), str(row["password_hash"])) if row else None
 
 
 def _hash_password(password: str, salt: bytes | None = None) -> str:
@@ -162,29 +151,19 @@ def register(request: RegisterRequest) -> LoginResponse:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That username is already in use.")
 
     with _auth_lock:
-        connection = sqlite3.connect(settings.db_path, timeout=10)
-        try:
-            connection.execute("BEGIN IMMEDIATE")
-            existing = connection.execute(
-                "SELECT 1 FROM registered_users WHERE username = ?",
-                (username,),
-            ).fetchone()
-            if existing:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That username is already in use.")
-            connection.execute(
-                "INSERT INTO registered_users (username, password_hash, created_at) VALUES (?, ?, ?)",
-                (
-                    username,
-                    _hash_password(request.password),
-                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                ),
-            )
-            connection.commit()
-        except Exception:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
+        with database.connection() as connection:
+            with connection.cursor() if database.using_postgres() else connection as cursor:
+                result = database.execute(
+                    cursor,
+                    "INSERT INTO registered_users (username, password_hash, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+                    (
+                        username,
+                        _hash_password(request.password),
+                        datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    ),
+                )
+                if result.rowcount != 1:
+                    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="That username is already in use.")
     return _issue_token(username, "member")
 
 

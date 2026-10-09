@@ -1,11 +1,16 @@
 import os
 import secrets
 import sqlite3
+import sys
 import tempfile
+from types import SimpleNamespace
 
 from fastapi import FastAPI
 
 os.environ["DB_PATH"] = os.path.join(tempfile.mkdtemp(), "t.db")
+os.environ["DATABASE_URL"] = ""
+os.environ["REDIS_URL"] = ""
+os.environ["MODEL_MODE"] = "mock"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from app import events  # noqa: E402
@@ -14,6 +19,16 @@ from app.middleware import RequestLimitsMiddleware  # noqa: E402
 from app.main import app  # noqa: E402
 from eval.run_eval import summarize_results  # noqa: E402
 
+import app.pipeline as pipeline
+from app.generator import MockGenerator
+from app.guard import MockGuard
+
+pipeline.guard = MockGuard()
+pipeline.generator = MockGenerator()
+pipeline.MOCK = True
+settings.model_mode = "mock"
+settings.database_url = None
+settings.auth_rate_limit = 1000
 settings.admin_username = "test-admin"
 settings.admin_password = secrets.token_urlsafe(24)
 settings.member_username = "test-member"
@@ -73,6 +88,68 @@ def test_member_registration_password_policy_and_role_gate():
     login_response = c.post("/auth/login", json=payload)
     assert login_response.status_code == 200
     assert login_response.json()["user"]["role"] == "member"
+
+
+def test_registration_requires_no_email_and_ignores_legacy_fields():
+    res = c.post("/auth/register", json={"username": "no.email.user", "password": "ValidPassword#2026"})
+    assert res.status_code == 201
+    body = res.json()
+    assert body["user"]["username"] == "no.email.user"
+    assert body["user"]["role"] == "member"
+    assert "email" not in body["user"]
+
+    res_legacy = c.post(
+        "/auth/register",
+        json={
+            "username": "legacy.user",
+            "password": "ValidPassword#2026",
+            "email": "legacy@example.com",
+            "conf_password": "ValidPassword#2026",
+        },
+    )
+    assert res_legacy.status_code == 201
+    assert res_legacy.json()["user"]["username"] == "legacy.user"
+
+
+def test_registration_duplicate_username_variants_and_admin_name_rejected():
+    base = {"username": "unique.user", "password": "ValidPassword#2026"}
+    assert c.post("/auth/register", json=base).status_code == 201
+    assert c.post("/auth/register", json=base).status_code == 409
+    assert c.post("/auth/register", json={"username": "UNIQUE.USER", "password": "ValidPassword#2026"}).status_code == 409
+    assert c.post("/auth/register", json={"username": settings.admin_username, "password": "ValidPassword#2026"}).status_code == 409
+
+
+def test_registration_validation_errors():
+    assert c.post("/auth/register", json={"username": "", "password": "ValidPassword#2026"}).status_code == 422
+    assert c.post("/auth/register", json={"username": "valid.user", "password": ""}).status_code == 422
+    assert c.post("/auth/register", json={"username": "ab", "password": "ValidPassword#2026"}).status_code == 422
+    assert c.post("/auth/register", json={"username": "invalid@username", "password": "ValidPassword#2026"}).status_code == 422
+    assert c.post("/auth/register", json={"username": "-invalidstart", "password": "ValidPassword#2026"}).status_code == 422
+    assert c.post("/auth/register", json={"username": "valid.user2", "password": "Short1!"}).status_code == 422
+    assert c.post("/auth/register", json={"username": "valid.user2", "password": "nouppercase#123"}).status_code == 422
+    assert c.post("/auth/register", json={"username": "valid.user2", "password": "NOLOWERCASE#123"}).status_code == 422
+    assert c.post("/auth/register", json={"username": "valid.user2", "password": "NoDigitsInThisPass!"}).status_code == 422
+    assert c.post("/auth/register", json={"username": "valid.user2", "password": "NoSymbolInPass123"}).status_code == 422
+
+
+def test_member_login_failure_and_unauthorized_access():
+    user_payload = {"username": "auth.tester", "password": "ValidPassword#2026"}
+    reg = c.post("/auth/register", json=user_payload)
+    assert reg.status_code == 201
+    member_jwt = reg.json()["access_token"]
+
+    assert c.post("/auth/login", json={"username": "auth.tester", "password": "WrongPassword#2026"}).status_code == 401
+    assert c.post("/auth/login", json={"username": "nobody.here", "password": "ValidPassword#2026"}).status_code == 401
+
+    mem_headers = {"Authorization": f"Bearer {member_jwt}"}
+    assert c.get("/security/metrics", headers=mem_headers).status_code == 403
+    assert c.get("/security/diagnostics", headers=mem_headers).status_code == 403
+    assert c.get("/security/events", headers=mem_headers).status_code == 403
+    assert c.get("/redteam/prompts", headers=mem_headers).status_code == 403
+    assert c.post("/chat", json={"message": "test", "mode": "baseline"}, headers=mem_headers).status_code == 403
+
+    assert c.get("/security/metrics").status_code == 401
+    assert c.post("/chat", json={"message": "test"}).status_code == 401
 
 
 def test_login_reports_missing_environment_configuration(monkeypatch):
@@ -184,6 +261,21 @@ def test_metrics_and_events():
     assert e["total"] >= 1 and "message" not in e["items"][0]
 
 
+def test_chat_history_is_persisted_per_user_with_redacted_content():
+    response = c.post(
+        "/chat",
+        json={"message": "Contact me at member@example.com"},
+        headers=headers(member_token),
+    )
+    conversation_id = response.json()["conversation_id"]
+    history = c.get(f"/chat/history?conversation_id={conversation_id}", headers=headers(member_token)).json()
+
+    assert [item["role"] for item in history["items"]] == ["user", "assistant"]
+    assert "member@example.com" not in history["items"][0]["content"]
+    assert "[REDACTED_EMAIL]" in history["items"][0]["content"]
+    assert c.get(f"/chat/history?conversation_id={conversation_id}", headers=headers()).json()["items"] == []
+
+
 def test_events_normalize_legacy_category_strings():
     with sqlite3.connect(settings.db_path) as connection:
         connection.execute(
@@ -253,3 +345,28 @@ def test_auth_rate_limit_is_enforced(monkeypatch):
     limited_client = TestClient(RequestLimitsMiddleware(target))
     assert limited_client.post("/auth/register").status_code == 200
     assert limited_client.post("/auth/register").status_code == 429
+
+
+def test_redis_limiter_uses_atomic_increment_and_idempotency_claim(monkeypatch):
+    calls = []
+
+    class FakeClient:
+        def eval(self, *args):
+            calls.append(("eval", args))
+            return 1
+
+        def set(self, *args, **kwargs):
+            calls.append(("set", args, kwargs))
+            return True
+
+    class FakeRedis:
+        from_url = staticmethod(lambda _url, **_kwargs: FakeClient())
+
+    monkeypatch.setitem(sys.modules, "redis", SimpleNamespace(Redis=FakeRedis))
+    from app.middleware import _RedisLimiter
+
+    limiter = _RedisLimiter("redis://example")
+    assert limiter.allow("rate:chat:127.0.0.1", 2, 60)
+    assert limiter.claim("dedupe:chat:test", 300)
+    assert calls[0][0] == "eval"
+    assert calls[1] == ("set", ("dedupe:chat:test", "1"), {"nx": True, "ex": 300})

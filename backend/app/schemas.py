@@ -57,3 +57,16 @@ class Metrics(BaseModel):
     redactions: int = 0
     average_latency_ms: Optional[float]
     evaluation_summary: Optional[dict] = None
+
+
+class ChatHistoryMessage(BaseModel):
+    message_id: str
+    request_id: str
+    conversation_id: str
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: str
+
+
+class ChatHistoryPage(BaseModel):
+    items: list[ChatHistoryMessage]
