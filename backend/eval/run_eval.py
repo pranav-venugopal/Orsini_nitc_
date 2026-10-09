@@ -35,12 +35,21 @@ def summarize_results(cases: list[dict], responses: dict[str, dict[str, dict]]) 
     return summary
 
 
-def post_chat(base_url: str, prompt: str, mode: str) -> dict:
+def request_json(url: str, payload: dict, token: str | None = None) -> dict:
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+    with urlopen(request, timeout=120) as response:
+        return json.loads(response.read())
+
+
+def post_chat(base_url: str, prompt: str, mode: str, token: str) -> dict:
     body = json.dumps({"message": prompt, "mode": mode}).encode("utf-8")
     request = Request(
         f"{base_url.rstrip('/')}/chat",
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
         method="POST",
     )
     with urlopen(request, timeout=120) as response:
@@ -51,11 +60,20 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     args = parser.parse_args()
+    from app.config import settings
+
+    if not settings.admin_username or not settings.admin_password:
+        raise SystemExit("Set ADMIN_USERNAME and ADMIN_PASSWORD in backend/.env before running the evaluation.")
+    session = request_json(
+        f"{args.base_url.rstrip('/')}/auth/login",
+        {"username": settings.admin_username, "password": settings.admin_password},
+    )
+    token = session["access_token"]
     cases = json.loads(Path(__file__).with_name("test_set.json").read_text(encoding="utf-8"))
     responses = {"baseline": {}, "guarded": {}}
     for case in cases:
         for mode in responses:
-            responses[mode][case["id"]] = post_chat(args.base_url, case["prompt"], mode)
+            responses[mode][case["id"]] = post_chat(args.base_url, case["prompt"], mode, token)
 
     summary = summarize_results(cases, responses)
     from app.events import save_evaluation_summary

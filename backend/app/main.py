@@ -1,18 +1,20 @@
 from typing import Optional
 
-from fastapi import FastAPI, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import events
+from .auth import LoginRequest, LoginResponse, RegisterRequest, SessionUser, current_user, init_auth_db, login, register, require_admin
 from .config import settings
 from .middleware import RequestLimitsMiddleware
-from .pipeline import MOCK, run_chat
+from .pipeline import MOCK, model_diagnostics, run_chat
 from .schemas import ChatRequest, ChatResponse, EventsPage, Metrics
 
 app = FastAPI(title="Secure AI Assistant API")
 app.add_middleware(RequestLimitsMiddleware)
-app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_methods=["GET", "POST"], allow_headers=["Content-Type"])
+app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_methods=["GET", "POST"], allow_headers=["Content-Type", "Authorization"])
 events.init_db()
+init_auth_db()
 
 # Approved demo prompts for the red-team page. Categories are labels, NOT expected results.
 REDTEAM_PROMPTS = [
@@ -29,24 +31,47 @@ def health():
     return {"status": "ok", "model_mode": settings.model_mode, "mock_models": MOCK}
 
 
+@app.post("/auth/login", response_model=LoginResponse)
+def auth_login(req: LoginRequest):
+    return login(req)
+
+
+@app.post("/auth/register", response_model=LoginResponse, status_code=201)
+def auth_register(req: RegisterRequest):
+    return register(req)
+
+
+@app.get("/auth/me", response_model=SessionUser)
+def auth_me(user: SessionUser = Depends(current_user)):
+    return user
+
+
 @app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, user: SessionUser = Depends(current_user)):
+    if req.mode == "baseline" and user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Baseline mode is restricted to administrators.")
     return run_chat(req)
 
 
 @app.get("/security/metrics", response_model=Metrics)
-def security_metrics():
+def security_metrics(_admin: SessionUser = Depends(require_admin)):
     return events.metrics()
+
+
+@app.get("/security/diagnostics")
+def security_diagnostics(_admin: SessionUser = Depends(require_admin)):
+    return model_diagnostics()
 
 
 @app.get("/security/events", response_model=EventsPage)
 def security_events(limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0),
                     stage: Optional[str] = None, action: Optional[str] = None,
-                    since: Optional[str] = None, until: Optional[str] = None):
+                    since: Optional[str] = None, until: Optional[str] = None,
+                    _admin: SessionUser = Depends(require_admin)):
     items, total = events.list_events(limit, offset, stage, action, since, until)
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 @app.get("/redteam/prompts")
-def redteam_prompts():
+def redteam_prompts(_admin: SessionUser = Depends(require_admin)):
     return {"items": REDTEAM_PROMPTS}

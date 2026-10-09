@@ -1,0 +1,4 @@
+# Install the appropriate PyTorch build for your CPU/CUDA platform first when needed.
+torch>=2.6
+transformers>=4.51,<5
+accelerate>=1.2,<2

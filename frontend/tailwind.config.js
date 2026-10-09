@@ -18,8 +18,8 @@ export default {
         "table-hover": "rgb(var(--color-table-hover) / <alpha-value>)",
       },
       fontFamily: {
-        sans: ['"Space Grotesk"', "sans-serif"],
-        display: ['"Barlow Condensed"', "sans-serif"],
+        sans: ['"DM Sans"', "sans-serif"],
+        display: ['"Manrope"', "sans-serif"],
       },
     },
   },

@@ -86,7 +86,7 @@ def metrics() -> dict:
         total, avg = c.execute("SELECT COUNT(*), AVG(latency_ms) FROM requests WHERE mode='guarded'").fetchone()
         ib = c.execute("SELECT COUNT(*) FROM events WHERE stage='input' AND action='blocked_input'").fetchone()[0]
         ob = c.execute("SELECT COUNT(*) FROM events WHERE stage='output' AND action='blocked_output'").fetchone()[0]
-        redactions = c.execute("SELECT COUNT(*) FROM events WHERE stage='output' AND action='redacted'").fetchone()[0]
+        redactions = c.execute("SELECT COUNT(*) FROM events WHERE action='redacted'").fetchone()[0]
         latest_evaluation = c.execute("SELECT summary FROM evaluations ORDER BY rowid DESC LIMIT 1").fetchone()
         c.close()
     return {

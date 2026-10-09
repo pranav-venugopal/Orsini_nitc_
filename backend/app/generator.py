@@ -1,7 +1,7 @@
-"""Answer generator. Interface = generate(message) -> str.
+"""Answer generator. Interface = generate(message) -> str."""
+from typing import Any
 
-OWNER: model/security person. Replace QwenGenerator.generate with real inference.
-"""
+from .transformers_runtime import TransformersRuntime
 
 
 class MockGenerator:
@@ -15,9 +15,23 @@ class MockGenerator:
 
 
 class QwenGenerator:
-    def __init__(self, model_id: str, hf_token: str | None):
-        # TODO(model owner): load Qwen 3B Instruct (transformers) once at startup.
-        raise NotImplementedError("Wire Qwen 3B Instruct here")
+    def __init__(self, model_id: str):
+        self._runtime = TransformersRuntime(model_id)
 
     def generate(self, message: str) -> str:
-        raise NotImplementedError
+        return self._runtime.generate(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a helpful, accurate assistant. "
+                        "Answer clearly and honestly. If you are uncertain, say so."
+                    ),
+                },
+                {"role": "user", "content": message},
+            ],
+            max_new_tokens=256,
+        )
+
+    def diagnostics(self) -> dict[str, Any]:
+        return self._runtime.diagnostics()
