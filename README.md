@@ -7,10 +7,20 @@ the **backend** enforces decisions, the **frontend** only displays them.
 React -> FastAPI -> Llama Guard (input) -> Qwen -> Llama Guard (output) -> Security event -> Dashboard
 ```
 
-The repo runs today with built-in **stand-in models** (`MODEL_MODE=mock`). The UI shows a banner while they are active.
-Real models plug in later behind two small interfaces (see `docs/WORKFLOW.md`).
+The repo runs completely locally with **no Hugging Face tokens or cloud API keys required**.
+- **Local Guardrail Gateway (`api.py`)**: Runs local PyTorch models (Qwen 2.5-3B Instruct with CUDA GPU acceleration) through the universal `GuardrailsEngine`.
+- **Full App Backend (`backend/`)**: Runs with built-in stand-in models (`MODEL_MODE=mock`) for fast offline development and testing.
 
-## Run the backend
+## Run the Local Guardrail Gateway (`api.py`)
+Runs the local Transformers model with GPU acceleration and input/output guardrails:
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m uvicorn api:app --reload --port 8000
+```
+- API Docs & Swagger: http://127.0.0.1:8000/docs
+- Health check: http://127.0.0.1:8000/health
+
+## Run the Full App Backend (`backend/`)
 ### Windows PowerShell
 ```powershell
 Set-Location backend
@@ -72,8 +82,8 @@ Set-Location backend
 The harness sends every synthetic case through baseline and guarded modes and stores the latest ASR and false-refusal summary for the dashboard. Mock-mode results measure only the stand-in rules, not real-model safety.
 
 ## Security rules baked in
+- 100% local operation: No external API keys or Hugging Face tokens are required or transmitted.
 - Frontend never decides safety, renders model text as plain text (no HTML), holds no secrets.
-- `HF_TOKEN` and model IDs live only in backend `.env`.
 - Events store sanitized metadata only: no prompts, no answers.
 - Generated output is screened for common credential patterns, emails, phone numbers, and SSNs; matching text is redacted and categorized. This is a limited pattern scanner, not comprehensive PII detection.
 - `/chat` enforces a configurable body-size cap and in-process per-IP rate limit.
