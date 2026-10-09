@@ -7,7 +7,7 @@ import { api, ApiError } from "../services/api";
 import type { EventsPage, Metrics } from "../types/api";
 
 const PAGE = 25;
-const CyberHeadScene = lazy(() => import("../components/CyberHeadScene"));
+const SectionScene = lazy(() => import("../components/SectionScene"));
 const sel = "rounded-xl border border-edge/70 bg-panel/65 px-4 py-2.5 text-sm text-text shadow-sm outline-none backdrop-blur-lg transition-colors focus:border-cyan-600";
 const percent = (rate: number | null) => rate === null ? "—" : `${(rate * 100).toFixed(1)}%`;
 
@@ -37,12 +37,12 @@ export default function SecurityDashboardPage() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="mb-2 text-[10px] uppercase text-mute">Live telemetry / policy outcomes</p>
-            <h1 className="font-display text-5xl uppercase leading-none text-text md:text-6xl">Security monitor</h1>
+            <h1 className="display-title font-display text-5xl uppercase leading-[1.02] text-text md:text-6xl">Security monitor</h1>
           </div>
           <button onClick={load} className="inline-flex h-11 items-center gap-2 rounded-full bg-brand px-5 text-sm font-medium text-white shadow-lg shadow-cyan-950/15 hover:bg-brand-hover"><RefreshCw size={15} /> Refresh</button>
         </div>
-        <Suspense fallback={<div className="cyber-scene h-[220px] w-full sm:h-[250px] md:h-[300px]"><img src="/HEAD.jpg" alt="" className="size-full object-cover object-[55%_42%]" /></div>}>
-          <CyberHeadScene className="h-[220px] sm:h-[250px] md:h-[300px]" />
+        <Suspense fallback={<div className="section-scene section-scene-monitor h-[190px] w-full rounded-[28px] sm:h-[220px] md:h-[270px]" />}>
+          <SectionScene mode="monitor" />
         </Suspense>
       </div>
       {error ? <ErrorState message={error} onRetry={load} /> : !metrics || !page ? <LoadingState /> : (

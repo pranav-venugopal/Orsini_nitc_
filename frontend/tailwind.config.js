@@ -19,7 +19,7 @@ export default {
       },
       fontFamily: {
         sans: ['"Space Grotesk"', "sans-serif"],
-        display: ['"Barlow Condensed"', "sans-serif"],
+        display: ['"Exo 2"', "sans-serif"],
       },
     },
   },

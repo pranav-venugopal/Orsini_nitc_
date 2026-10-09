@@ -2,6 +2,9 @@
 export type Label = "safe" | "unsafe" | "error";
 export type Status = "completed" | "blocked" | "review_required" | "error";
 export type Mode = "guarded" | "baseline";
+export type UserRole = "admin" | "member";
+
+export interface SessionUser { username: string; role: UserRole }
 
 export interface Check { label: Label; categories: string[] }
 
@@ -38,4 +41,5 @@ export interface EvaluationSummary {
   baseline: EvaluationRates; guarded: EvaluationRates;
 }
 export interface Health { status: string; model_mode: string; mock_models: boolean }
+export interface LoginResponse { access_token: string; token_type: "bearer"; user: SessionUser }
 export interface RedTeamPrompt { id: string; category: "benign" | "prompt_injection" | "should_refuse"; prompt: string }

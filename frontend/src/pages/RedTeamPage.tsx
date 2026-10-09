@@ -6,7 +6,7 @@ import type { ChatResponse, Mode, RedTeamPrompt } from "../types/api";
 
 type Row = { prompt: RedTeamPrompt; baseline?: ChatResponse; guarded?: ChatResponse; failed?: boolean };
 
-const CyberHeadScene = lazy(() => import("../components/CyberHeadScene"));
+const SectionScene = lazy(() => import("../components/SectionScene"));
 const outcome = (r?: ChatResponse) => (!r ? "—" : `${r.status} (${r.action})`);
 
 export default function RedTeamPage() {
@@ -44,11 +44,11 @@ export default function RedTeamPage() {
       <div className="grid gap-4 border-b border-edge pb-5 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:items-center">
         <div>
           <p className="mb-2 text-[10px] uppercase text-mute">Adversarial test bench</p>
-          <h1 className="font-display text-5xl uppercase leading-none text-text md:text-6xl">Red-team lab</h1>
+          <h1 className="display-title font-display text-5xl uppercase leading-[1.02] text-text md:text-6xl">Red-team lab</h1>
           <p className="mt-3 max-w-2xl text-sm text-mute">Compare observed baseline and guarded outcomes on a fixed prompt set.</p>
         </div>
-        <Suspense fallback={<div className="cyber-scene h-[220px] w-full sm:h-[250px] md:h-[300px]"><img src="/HEAD.jpg" alt="" className="size-full object-cover object-[55%_42%]" /></div>}>
-          <CyberHeadScene className="h-[220px] sm:h-[250px] md:h-[300px]" />
+        <Suspense fallback={<div className="section-scene section-scene-redteam h-[190px] w-full rounded-[28px] sm:h-[220px] md:h-[270px]" />}>
+          <SectionScene mode="redteam" />
         </Suspense>
       </div>
       {error ? <ErrorState message={error} /> : !prompts ? <LoadingState /> : (

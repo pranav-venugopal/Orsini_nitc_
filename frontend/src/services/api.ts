@@ -1,15 +1,34 @@
-import type { ChatResponse, EventsPage, Health, Metrics, Mode, RedTeamPrompt } from "../types/api";
+import type { ChatResponse, EventsPage, Health, LoginResponse, Metrics, Mode, RedTeamPrompt, SessionUser } from "../types/api";
 
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
+const SESSION_KEY = "secure-ai-access-token";
 
 export class ApiError extends Error {}
+
+function storedToken() {
+  return typeof window === "undefined" ? null : window.sessionStorage.getItem(SESSION_KEY);
+}
+
+export function clearSession() {
+  window.sessionStorage.removeItem(SESSION_KEY);
+}
+
+export function hasSession() {
+  return Boolean(storedToken());
+}
 
 async function request<T>(path: string, init?: RequestInit, timeoutMs = 60000): Promise<T> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    const res = await fetch(`${BASE}${path}`, { ...init, signal: ctrl.signal });
-    if (!res.ok) throw new ApiError(`The server returned an error (${res.status}).`);
+    const headers = new Headers(init?.headers);
+    const token = storedToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const res = await fetch(`${BASE}${path}`, { ...init, headers, signal: ctrl.signal });
+    if (!res.ok) {
+      const payload = await res.json().catch(() => null) as { detail?: string } | null;
+      throw new ApiError(payload?.detail ?? `The server returned an error (${res.status}).`);
+    }
     return (await res.json()) as T;
   } catch (e) {
     if (e instanceof ApiError) throw e;
@@ -24,6 +43,16 @@ const VALID_STATUS = ["completed", "blocked", "review_required", "error"];
 
 export const api = {
   health: () => request<Health>("/health", undefined, 8000),
+  async login(username: string, password: string): Promise<SessionUser> {
+    const result = await request<LoginResponse>("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    }, 10000);
+    window.sessionStorage.setItem(SESSION_KEY, result.access_token);
+    return result.user;
+  },
+  me: () => request<SessionUser>("/auth/me", undefined, 8000),
   async chat(message: string, conversationId: string | null, mode: Mode = "guarded"): Promise<ChatResponse> {
     const r = await request<ChatResponse>("/chat", {
       method: "POST",

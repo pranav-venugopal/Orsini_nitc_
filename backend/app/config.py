@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
+import secrets
 
 
 class Settings(BaseSettings):
@@ -14,6 +15,12 @@ class Settings(BaseSettings):
     max_request_bytes: int = Field(default=16_384, gt=0)
     chat_rate_limit: int = Field(default=120, gt=0)
     chat_rate_window_seconds: int = Field(default=60, gt=0)
+    admin_username: str | None = None
+    admin_password: str | None = None
+    member_username: str | None = None
+    member_password: str | None = None
+    jwt_secret: str = Field(default_factory=lambda: secrets.token_urlsafe(48), min_length=32)
+    access_token_minutes: int = Field(default=480, gt=0)
 
     @property
     def origins(self) -> list[str]:

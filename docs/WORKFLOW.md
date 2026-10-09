@@ -52,7 +52,7 @@ Steps:
 6. Tighten `CORS_ORIGINS` to the demo host before deployment and own the final demo walkthrough.
 
 ## Not implemented yet (do not claim in the demo)
-- Caller authentication and per-user quotas. The current request limiter is per-IP, in-process, and intended for a single-instance demo.
+- Persistent account storage, password reset, MFA, and per-user quotas. Member/admin accounts are configured in backend environment variables; the current request limiter is per-IP, in-process, and intended for a single-instance demo.
 - Tool proposal registry, per-user/tool/resource authorization, argument validation, approval flow, and sandboxed execution. The generator currently returns text only; no tool executes.
 - Retrieval authorization or untrusted-context handling; this repository does not yet include a RAG victim app.
 - Comprehensive PII detection. Current output redaction covers common regex patterns only; it is not a substitute for Presidio or a tuned detector.

@@ -20,7 +20,7 @@ export default function ChatPage() {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="mb-2 flex items-center gap-2 text-[10px] uppercase text-mute"><span className="size-1.5 bg-cyan-500" /> Protected session</p>
-            <h1 className="font-display text-5xl uppercase leading-[0.88] text-text md:text-7xl">Secure AI <span className="text-accent">Assistant</span></h1>
+            <h1 className="display-title font-display text-5xl uppercase leading-[0.94] text-text md:text-7xl">Secure AI <span className="text-accent">Assistant</span></h1>
           </div>
           <div className="flex items-center gap-2 border border-edge bg-panel/70 px-3 py-2 text-xs text-text">
             <ShieldCheck size={15} className="text-accent" /> Guarded mode

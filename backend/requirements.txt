@@ -4,6 +4,7 @@ pydantic>=2.6
 pydantic-settings>=2.2
 pytest>=8.0
 httpx>=0.27
+PyJWT>=2.8
 # --- added later by the model owner (real mode) ---
 # torch
 # transformers

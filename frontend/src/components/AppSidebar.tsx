@@ -1,17 +1,25 @@
 import { useState } from "react";
-import { Activity, Crosshair, LayoutDashboard, Menu, MessageSquare, ShieldCheck, X } from "lucide-react";
+import { Activity, Crosshair, LayoutDashboard, LogOut, Menu, MessageSquare, ShieldCheck, X } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
+import type { UserRole } from "../types/api";
 
 const links = [
-  { to: "/", label: "Assistant", icon: MessageSquare },
+  { to: "/chat", label: "Assistant", icon: MessageSquare },
   { to: "/dashboard", label: "Security monitor", icon: LayoutDashboard },
   { to: "/red-team", label: "Red-team lab", icon: Crosshair },
 ];
 
-export default function AppSidebar({ theme, onToggleTheme }: { theme: "light" | "dark"; onToggleTheme: () => void }) {
+export default function AppSidebar({ theme, role, username, onToggleTheme, onSignOut }: {
+  theme: "light" | "dark";
+  role: UserRole;
+  username: string;
+  onToggleTheme: () => void;
+  onSignOut: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const visibleLinks = role === "admin" ? links : links.slice(0, 1);
   return (
     <>
       <header className="flex items-center justify-between border-b border-white/10 bg-[#071c2b] px-4 py-3 text-white md:hidden">
@@ -35,8 +43,8 @@ export default function AppSidebar({ theme, onToggleTheme }: { theme: "light" | 
         </div>
         <p className="mb-3 hidden px-3 text-[10px] uppercase text-white/40 md:block">Workspace</p>
         <ul className="space-y-1 md:flex-1">
-          {links.map((link) => {
-            const isActive = link.to === "/" ? location.pathname === "/" : location.pathname.startsWith(link.to);
+          {visibleLinks.map((link) => {
+            const isActive = location.pathname === link.to || location.pathname.startsWith(`${link.to}/`);
             const Icon = link.icon;
             return (
               <li key={link.to}>
@@ -44,18 +52,25 @@ export default function AppSidebar({ theme, onToggleTheme }: { theme: "light" | 
                   className={`group flex items-center gap-3 rounded-xl border px-3 py-3 text-sm transition-all duration-300 ${isActive ? "border-cyan-200/25 bg-cyan-300/[0.12] text-white shadow-[0_10px_35px_rgba(0,200,255,0.1),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-xl" : "border-transparent text-white/60 hover:border-white/10 hover:bg-white/[0.06] hover:text-white"}`}>
                   <Icon size={18} strokeWidth={1.8} className={isActive ? "text-cyan-200" : "text-white/45 group-hover:text-cyan-100"} />
                   <span className="flex-1">{link.label}</span>
-                  {isActive && <span className="size-1.5 bg-cyan-300 shadow-[0_0_10px_#37dbfa]" />}
+                  {isActive && <span className="size-1.5 rounded-full bg-cyan-300 shadow-[0_0_10px_#37dbfa]" />}
                 </NavLink>
               </li>
             );
           })}
         </ul>
-        <div className="mt-6 hidden border-t border-white/10 pt-4 md:block">
-          <div className="flex items-center gap-2 px-2 text-[10px] uppercase text-white/45">
+        <div className="mt-4 border-t border-white/10 pt-4 md:mt-6">
+          <div className="hidden items-center gap-2 px-2 text-[10px] uppercase text-white/45 md:flex">
             <Activity size={13} className="text-cyan-300" /> Local gateway
           </div>
-          <div className="mt-3 flex items-center gap-2 px-2 text-xs text-white/70">
+          <div className="mt-1 flex items-center gap-2 px-2 text-xs text-white/70 md:mt-3">
             <span className="size-1.5 animate-pulse bg-cyan-300" /> Runtime connected
+          </div>
+          <div className="mt-4 flex items-center justify-between gap-3 px-2">
+            <div className="min-w-0">
+              <p className="truncate text-xs text-white/85">{username}</p>
+              <p className="mt-0.5 text-[9px] uppercase tracking-[0.08em] text-white/40">{role} access</p>
+            </div>
+            <button type="button" onClick={onSignOut} aria-label="Sign out" title="Sign out" className="grid size-9 shrink-0 place-items-center rounded-full border border-white/15 text-white/60 transition-colors hover:border-rose-300/50 hover:text-white"><LogOut size={15} /></button>
           </div>
         </div>
       </nav>
