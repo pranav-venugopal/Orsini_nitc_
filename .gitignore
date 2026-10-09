@@ -3,3 +3,24 @@
 .venv/
 venv/
 .env
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+.cache/
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.env
+*.db
+.venv/
+.pytest_cache/
+# model weights are never committed
+models/
+*.safetensors
+*.bin
+
+
