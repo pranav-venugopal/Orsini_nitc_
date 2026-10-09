@@ -114,8 +114,15 @@ class MainLLM:
         return answer or "The model returned an empty response."
 
 
+from guardrails import Guard
+from llama_guard_validator import LlamaGuardSafety
+from guardrails_engine import GuardrailsAIGuard, Stage
+
 def main():
     engine = GuardrailsEngine()
+    guard_ai = Guard().use(LlamaGuardSafety(on_fail="exception"))
+    engine.add(GuardrailsAIGuard(guard_ai, stages=[Stage.INPUT, Stage.OUTPUT]))
+    
     llm = MainLLM()
 
     print("=" * 55)

@@ -3,3 +3,5 @@ transformers
 accelerate
 huggingface_hub
 guardrails-ai
+groq
+python-dotenv

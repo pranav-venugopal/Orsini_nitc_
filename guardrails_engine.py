@@ -652,6 +652,27 @@ class CallableGuard(Guard):
         return self.fn(text, stage, history) or []
 
 
+class GuardrailsAIGuard(Guard):
+    """Bridge to the guardrails-ai python package (guardrails.Guard instances)."""
+    name = "guardrails_ai"
+    
+    def __init__(self, guard_instance, action=Action.BLOCK, name="guardrails_ai", stages=None):
+        self.guard = guard_instance
+        self.action = action
+        self.name = name
+        if stages:
+            self.stages = set(stages)
+
+    def check(self, text, stage, history):
+        try:
+            # Try to validate using guardrails-ai
+            self.guard.validate(text)
+            return []
+        except Exception as exc:
+            # If guardrails-ai raises a ValidationError, capture it.
+            return [Finding(self.name, self.action, str(exc)[:200], self.name)]
+
+
 class LlamaGuardClassifier(Guard):
     """ML safety classifier (Llama Guard 3). Lazy-loaded. Checks user turn on INPUT, user+assistant on OUTPUT."""
     name = "llama_guard"

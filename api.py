@@ -7,11 +7,30 @@ from typing import Any
 # Ensure current directory is in Python path for uvicorn reloader subprocesses
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from guardrails_engine import GuardrailsEngine
-from main import MainLLM, MODEL_ID
+
+
+# ── Inference backend selection ──────────────────────────────
+# Set INFERENCE_MODE=local  for on-device Transformers (Qwen on GPU).
+# Set INFERENCE_MODE=groq   for Groq cloud API (requires GROQ_API_KEY).
+INFERENCE_MODE = os.getenv("INFERENCE_MODE", "groq").lower()
+
+if INFERENCE_MODE == "local":
+    from main import MainLLM, MODEL_ID
+    llm = MainLLM()
+elif INFERENCE_MODE == "groq":
+    from groq_llm import GroqLLM, GROQ_MODEL_ID as MODEL_ID
+    llm = GroqLLM()
+else:
+    raise ValueError(
+        f"Unknown INFERENCE_MODE='{INFERENCE_MODE}'. Use 'local' or 'groq'."
+    )
 
 
 # Log detailed errors to the local terminal, not to API clients.
@@ -25,14 +44,26 @@ app = FastAPI(
         "An API gateway that validates prompts and LLM responses "
         "before returning them to clients."
     ),
-    version="0.1.0",
+    version="0.2.0",
 )
 
 
-# Initialize shared instances. Qwen loads lazily on the first
-# request that passes input guardrails (runs on GPU).
+from guardrails_engine import GuardrailsEngine, GuardrailsAIGuard, Stage
+from guardrails import Guard
+from llama_guard_validator import LlamaGuardSafety
+from guardrails.hub import ToxicLanguage, DetectPII
+
+# Build the engine and attach Guardrails AI
 engine = GuardrailsEngine()
-llm = MainLLM()
+
+# Removed DetectPII and ToxicLanguage because they make remote requests
+# to hub.api.guardrailsai.com which is currently failing (DNS errors).
+guard_ai = (
+    Guard()
+    .use(LlamaGuardSafety(on_fail="exception"))
+)
+
+engine.add(GuardrailsAIGuard(guard_ai, stages=[Stage.INPUT, Stage.OUTPUT]))
 
 REFUSAL = "Sorry, I can't help with that request."
 
@@ -51,6 +82,7 @@ class ChatResponse(BaseModel):
     input_decision: str
     output_decision: str | None
     model: str
+    inference: str
 
 
 @app.get("/")
@@ -58,20 +90,21 @@ def root() -> dict[str, str]:
     return {
         "name": "LLM Guardrail Gateway",
         "status": "running",
+        "inference": INFERENCE_MODE,
         "docs": "/docs",
         "health": "/health",
     }
 
 
-
 @app.get("/health")
 def health() -> dict[str, Any]:
     """Check API health without forcing model loading."""
+    loaded = True if INFERENCE_MODE == "groq" else llm.model is not None
     return {
         "status": "ok",
-        "model": MODEL_ID,
-        "inference": "local",
-        "model_loaded": llm.model is not None,
+        "model": MODEL_ID if INFERENCE_MODE == "groq" else MODEL_ID,
+        "inference": INFERENCE_MODE,
+        "model_loaded": loaded,
     }
 
 
@@ -94,6 +127,7 @@ def chat(request: ChatRequest) -> ChatResponse:
                 else None
             ),
             model=MODEL_ID,
+            inference=INFERENCE_MODE,
         )
 
     except Exception:
@@ -105,3 +139,4 @@ def chat(request: ChatRequest) -> ChatResponse:
             status_code=500,
             detail="The gateway could not process this request.",
         ) from None
+
