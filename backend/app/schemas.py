@@ -1,0 +1,58 @@
+from typing import Literal, Optional
+
+from pydantic import BaseModel, Field
+
+Label = Literal["safe", "unsafe", "error"]
+Status = Literal["completed", "blocked", "review_required", "error"]
+Mode = Literal["guarded", "baseline"]
+
+
+class Check(BaseModel):
+    label: Label
+    categories: list[str] = []
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    conversation_id: Optional[str] = None
+    mode: Mode = "guarded"
+
+
+class ChatResponse(BaseModel):
+    request_id: str
+    conversation_id: Optional[str] = None
+    status: Status
+    answer: str
+    input_check: Optional[Check] = None   # None = check was not run
+    output_check: Optional[Check] = None  # None = check was not run
+    action: str  # returned | blocked_input | blocked_output | returned_unchecked | error
+    latency_ms: int
+    mode: Mode
+    mock_models: bool  # True while stand-in models are active
+
+
+class SecurityEvent(BaseModel):
+    event_id: str
+    timestamp: str
+    request_id: str
+    stage: Literal["input", "output"]
+    label: Label
+    categories: list[str]
+    action: str
+    latency_ms: int
+
+
+class EventsPage(BaseModel):
+    items: list[SecurityEvent]
+    total: int
+    limit: int
+    offset: int
+
+
+class Metrics(BaseModel):
+    total_requests: int
+    input_blocks: int
+    output_blocks: int
+    redactions: int = 0
+    average_latency_ms: Optional[float]
+    evaluation_summary: Optional[dict] = None
