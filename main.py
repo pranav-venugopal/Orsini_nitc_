@@ -1,5 +1,4 @@
 
-import sys
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -34,7 +33,36 @@ class MainLLM:
             low_cpu_mem_usage=True,
         ).eval()
 
-        print("Main LLM loaded successfully.\n")
+        print("\nMain LLM loaded successfully.")
+        print(f"Model ID: {self.model_id}")
+        print(f"Model dtype: {self.model.dtype}")
+
+        # Report actual model placement.
+        device_map = getattr(self.model, "hf_device_map", None)
+
+        if device_map:
+            print("Model device map:")
+            for module_name, device in device_map.items():
+                print(f"  {module_name}: {device}")
+        else:
+            print(f"Model device: {self.model.device}")
+
+        # Report GPU details when CUDA is available.
+        if torch.cuda.is_available():
+            print(f"CUDA available: {torch.cuda.is_available()}")
+            print(f"GPU: {torch.cuda.get_device_name(0)}")
+            print(
+                "GPU memory allocated: "
+                f"{torch.cuda.memory_allocated(0) / 1024**3:.2f} GiB"
+            )
+            print(
+                "GPU memory reserved: "
+                f"{torch.cuda.memory_reserved(0) / 1024**3:.2f} GiB"
+            )
+        else:
+            print("CUDA is unavailable to PyTorch.")
+
+        print()
 
     def generate(self, prompt: str) -> str:
         self.load()
@@ -76,12 +104,17 @@ class MainLLM:
             skip_special_tokens=True,
         ).strip()
 
+        # Show memory after generation for GPU diagnostics.
+        if torch.cuda.is_available():
+            print(
+                "GPU memory allocated after generation: "
+                f"{torch.cuda.memory_allocated(0) / 1024**3:.2f} GiB"
+            )
+
         return answer or "The model returned an empty response."
 
 
 def main():
-    # Uses your deterministic guards, PII guard, and injection guard.
-    # Llama Guard remains disabled for this initial integration.
     engine = GuardrailsEngine()
     llm = MainLLM()
 
@@ -89,6 +122,7 @@ def main():
     print("       LLM GUARDRAIL GATEWAY")
     print("=" * 55)
     print(f"Main model: {MODEL_ID}")
+    print("Inference: local Transformers model")
     print("Type 'exit' to quit.")
 
     while True:
@@ -126,7 +160,6 @@ def main():
             print(f"\nAssistant: {response}")
 
         except Exception as exc:
-            # Do not expose internal errors or stack traces to the user.
             print("\nRequest failed safely.")
             print(f"Error type: {type(exc).__name__}")
             print("Check the terminal logs and model configuration.")

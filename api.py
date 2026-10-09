@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from guardrails_engine import GuardrailsEngine
-from hf_llm import MainLLM, MODEL_ID
+from main import MainLLM, MODEL_ID
 
 
 # Log detailed errors to the local terminal, not to API clients.
@@ -30,7 +30,7 @@ app = FastAPI(
 
 
 # Initialize shared instances. Qwen loads lazily on the first
-# request that passes the input guardrails.
+# request that passes input guardrails (runs on GPU).
 engine = GuardrailsEngine()
 llm = MainLLM()
 
@@ -63,13 +63,15 @@ def root() -> dict[str, str]:
     }
 
 
+
 @app.get("/health")
 def health() -> dict[str, Any]:
-    """Check gateway health without making an inference request."""
+    """Check API health without forcing model loading."""
     return {
         "status": "ok",
         "model": MODEL_ID,
-        "inference": "huggingface_hosted",
+        "inference": "local",
+        "model_loaded": llm.model is not None,
     }
 
 
