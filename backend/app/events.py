@@ -77,7 +77,17 @@ def list_events(limit: int, offset: int, stage: Optional[str], action: Optional[
             f"SELECT * FROM events {clause} ORDER BY timestamp DESC, rowid DESC LIMIT ? OFFSET ?", [*args, limit, offset]
         ).fetchall()
         c.close()
-    return [{**dict(r), "categories": json.loads(r["categories"])} for r in rows], total
+    def categories(value: str) -> list[str]:
+        """Read current JSON arrays and legacy JSON/plain string category values."""
+        try:
+            parsed = json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            parsed = value
+        if isinstance(parsed, list):
+            return [item for item in parsed if isinstance(item, str)]
+        return [parsed] if isinstance(parsed, str) and parsed else []
+
+    return [{**dict(row), "categories": categories(row["categories"])} for row in rows], total
 
 
 def metrics() -> dict:

@@ -184,6 +184,17 @@ def test_metrics_and_events():
     assert e["total"] >= 1 and "message" not in e["items"][0]
 
 
+def test_events_normalize_legacy_category_strings():
+    with sqlite3.connect(settings.db_path) as connection:
+        connection.execute(
+            "INSERT INTO events VALUES (?,?,?,?,?,?,?,?)",
+            ("evt_legacy", "2026-01-01T00:00:00+00:00", "req_legacy", "input", "unsafe", '"violence"', "blocked_input", 1),
+        )
+    response = c.get("/security/events?stage=input&limit=100", headers=headers())
+    item = next(event for event in response.json()["items"] if event["event_id"] == "evt_legacy")
+    assert item["categories"] == ["violence"]
+
+
 def test_evaluation_summary_metrics_round_trip():
     sample = {
         "dataset_cases": 2,

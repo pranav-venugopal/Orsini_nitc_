@@ -13,14 +13,15 @@ The repo runs completely locally or using the Groq API, with **no Hugging Face t
 
 Models load lazily on the first guarded request (which may take several minutes while weights are downloaded). The admin-only Security Monitor diagnostics show model loading, device placement, CUDA availability, GPU, and memory usage.
 
-## Run the Local Guardrail Gateway (`api.py`)
-Runs the local Transformers model with GPU acceleration and input/output guardrails:
+## Run the Standalone Guardrail Gateway (`api.py`)
+This is a standalone gateway demonstration. It does not implement the frontend's account, Security
+Monitor, or Red-team Lab data APIs. Use the full app backend below for the React application.
 ```powershell
 .\.venv\Scripts\Activate.ps1
-python -m uvicorn api:app --reload --port 8000
+python -m uvicorn api:app --reload --port 8001
 ```
-- API Docs & Swagger: http://127.0.0.1:8000/docs
-- Health check: http://127.0.0.1:8000/health
+- API Docs & Swagger: http://127.0.0.1:8001/docs
+- Health check: http://127.0.0.1:8001/health
 
 ## Run the Full App Backend (`backend/`)
 ### Windows PowerShell
@@ -74,7 +75,8 @@ npm install
 cp .env.example .env
 npm run dev
 ```
-The frontend runs at http://localhost:5173. Set `VITE_API_BASE_URL=http://localhost:8000` in `frontend/.env`.
+The frontend runs at http://localhost:5173. It requires the full app backend at
+`VITE_API_BASE_URL=http://localhost:8000`; do not point it at the standalone `api.py` gateway.
 The interface has persisted light and dark themes, a custom animated signal illustration on the public pages, and a responsive chat-first workspace with horizontal role-aware navigation. Workspace illustrations are generated in the UI; image files in the repository's `images` folder are not used or copied into the frontend build.
 
 ## Login and roles
