@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
-import PageArtwork from "../components/PageArtwork";
 import EventsTable from "../components/EventsTable";
 import MetricCard from "../components/MetricCard";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
@@ -8,6 +7,7 @@ import { api, ApiError } from "../services/api";
 import type { EventsPage, Metrics } from "../types/api";
 
 const PAGE = 25;
+const CyberHeadScene = lazy(() => import("../components/CyberHeadScene"));
 const sel = "border border-edge bg-panel/80 px-3 py-2 text-sm text-text outline-none transition-colors focus:border-cyan-600";
 const percent = (rate: number | null) => rate === null ? "—" : `${(rate * 100).toFixed(1)}%`;
 
@@ -33,15 +33,17 @@ export default function SecurityDashboardPage() {
 
   return (
     <div className="page-enter mx-auto max-w-6xl space-y-8 px-4 py-6 md:px-8 md:py-9">
-      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-edge pb-5">
-        <div>
-          <p className="mb-2 text-[10px] uppercase text-mute">Live telemetry / policy outcomes</p>
-          <h1 className="font-display text-5xl uppercase leading-none text-text md:text-6xl">Security monitor</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          <PageArtwork label="Threat telemetry" />
+      <div className="grid gap-4 border-b border-edge pb-5 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:items-center">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="mb-2 text-[10px] uppercase text-mute">Live telemetry / policy outcomes</p>
+            <h1 className="font-display text-5xl uppercase leading-none text-text md:text-6xl">Security monitor</h1>
+          </div>
           <button onClick={load} className="inline-flex h-10 items-center gap-2 bg-brand px-4 text-sm font-medium text-white hover:bg-brand-hover"><RefreshCw size={15} /> Refresh</button>
         </div>
+        <Suspense fallback={<div className="cyber-scene h-[220px] w-full sm:h-[250px] md:h-[300px]"><img src="/HEAD.jpg" alt="" className="size-full object-cover object-[55%_42%]" /></div>}>
+          <CyberHeadScene className="h-[220px] sm:h-[250px] md:h-[300px]" />
+        </Suspense>
       </div>
       {error ? <ErrorState message={error} onRetry={load} /> : !metrics || !page ? <LoadingState /> : (
         <>

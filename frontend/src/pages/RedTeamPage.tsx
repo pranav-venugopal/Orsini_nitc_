@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Play } from "lucide-react";
-import PageArtwork from "../components/PageArtwork";
 import { ErrorState, LoadingState } from "../components/States";
 import { api, ApiError } from "../services/api";
 import type { ChatResponse, Mode, RedTeamPrompt } from "../types/api";
 
 type Row = { prompt: RedTeamPrompt; baseline?: ChatResponse; guarded?: ChatResponse; failed?: boolean };
 
+const CyberHeadScene = lazy(() => import("../components/CyberHeadScene"));
 const outcome = (r?: ChatResponse) => (!r ? "—" : `${r.status} (${r.action})`);
 
 export default function RedTeamPage() {
@@ -41,13 +41,15 @@ export default function RedTeamPage() {
 
   return (
     <div className="page-enter mx-auto max-w-6xl space-y-7 px-4 py-6 md:px-8 md:py-9">
-      <div className="flex flex-wrap items-end justify-between gap-5 border-b border-edge pb-5">
+      <div className="grid gap-4 border-b border-edge pb-5 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] lg:items-center">
         <div>
           <p className="mb-2 text-[10px] uppercase text-mute">Adversarial test bench</p>
           <h1 className="font-display text-5xl uppercase leading-none text-text md:text-6xl">Red-team lab</h1>
           <p className="mt-3 max-w-2xl text-sm text-mute">Compare observed baseline and guarded outcomes on a fixed prompt set.</p>
         </div>
-        <PageArtwork label="Adversarial testing" />
+        <Suspense fallback={<div className="cyber-scene h-[220px] w-full sm:h-[250px] md:h-[300px]"><img src="/HEAD.jpg" alt="" className="size-full object-cover object-[55%_42%]" /></div>}>
+          <CyberHeadScene className="h-[220px] sm:h-[250px] md:h-[300px]" />
+        </Suspense>
       </div>
       {error ? <ErrorState message={error} /> : !prompts ? <LoadingState /> : (
         <>

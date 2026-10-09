@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Float, Line } from "@react-three/drei";
+import { Float, Line, Sparkles } from "@react-three/drei";
 import { clsx, type ClassValue } from "clsx";
 import { motion, useReducedMotion } from "motion/react";
 import { twMerge } from "tailwind-merge";
@@ -8,16 +8,19 @@ import * as THREE from "three";
 
 type Point3 = [number, number, number];
 
-function OrbitRing({ position, radius, speed }: { position: Point3; radius: number; speed: number }) {
+function OrbitRing({ position, radius, speed, rotation }: { position: Point3; radius: number; speed: number; rotation: Point3 }) {
   const ring = useRef<THREE.Mesh>(null);
   useFrame((_, delta) => {
-    if (ring.current) ring.current.rotation.z += delta * speed;
+    if (!ring.current) return;
+    ring.current.rotation.x += delta * speed * 0.36;
+    ring.current.rotation.y += delta * speed * 0.52;
+    ring.current.rotation.z += delta * speed;
   });
 
   return (
-    <mesh ref={ring} position={position} rotation={[0.18, 0.34, 0]}>
-      <torusGeometry args={[radius, 0.008, 8, 96]} />
-      <meshBasicMaterial color="#50ddff" transparent opacity={0.84} />
+    <mesh ref={ring} position={position} rotation={rotation}>
+      <torusGeometry args={[radius, 0.014, 10, 128]} />
+      <meshBasicMaterial color="#58e4ff" transparent opacity={0.94} toneMapped={false} />
     </mesh>
   );
 }
@@ -45,21 +48,23 @@ function SceneGeometry({ reducedMotion }: { reducedMotion: boolean }) {
 
   return (
     <>
-      <ambientLight intensity={0.8} />
-      <pointLight position={[2.5, 1.8, 2]} color="#8eeeff" intensity={2.2} />
+      <ambientLight intensity={0.9} />
+      <pointLight position={[0.8, 1.8, 2.5]} color="#8eeeff" intensity={3.2} />
       <group ref={subject}>
+        <OrbitRing position={[0, 0, 0.78]} radius={1.34} speed={reducedMotion ? 0 : 0.25} rotation={[0.55, 0.18, 0.08]} />
+        <OrbitRing position={[0, 0, 0.72]} radius={1.08} speed={reducedMotion ? 0 : -0.34} rotation={[1.14, 0.3, 0.72]} />
+        <OrbitRing position={[0, 0, 0.84]} radius={0.82} speed={reducedMotion ? 0 : 0.42} rotation={[0.3, 1.12, 0.25]} />
         <Float speed={reducedMotion ? 0 : 0.7} rotationIntensity={reducedMotion ? 0 : 0.018} floatIntensity={reducedMotion ? 0 : 0.035}>
-          <mesh position={[2.02, 0.52, 0.16]} rotation={[0.3, 0.5, 0.15]}>
-            <octahedronGeometry args={[0.075, 0]} />
-            <meshStandardMaterial color="#d9faff" emissive="#00bce8" emissiveIntensity={0.9} metalness={0.75} roughness={0.2} />
+          <mesh position={[1.55, 0.82, 1.0]} rotation={[0.3, 0.5, 0.15]}>
+            <octahedronGeometry args={[0.11, 0]} />
+            <meshStandardMaterial color="#d9faff" emissive="#00bce8" emissiveIntensity={1.4} metalness={0.75} roughness={0.2} />
           </mesh>
-          <mesh position={[-2.0, -0.5, 0.16]} rotation={[0.25, 0.2, 0.4]}>
-            <icosahedronGeometry args={[0.045, 0]} />
-            <meshStandardMaterial color="#9cecff" emissive="#00bce8" emissiveIntensity={0.7} metalness={0.8} roughness={0.18} />
+          <mesh position={[-1.55, -0.72, 1.0]} rotation={[0.25, 0.2, 0.4]}>
+            <icosahedronGeometry args={[0.075, 0]} />
+            <meshStandardMaterial color="#9cecff" emissive="#00bce8" emissiveIntensity={1.2} metalness={0.8} roughness={0.18} />
           </mesh>
         </Float>
-        <OrbitRing position={[1.68, 0.05, 0.11]} radius={0.58} speed={reducedMotion ? 0 : 0.12} />
-        <OrbitRing position={[-1.7, 0.02, 0.12]} radius={0.48} speed={reducedMotion ? 0 : -0.1} />
+        <Sparkles position={[0, 0, 0.45]} count={38} scale={[4.1, 2.6, 0.45]} size={2.3} speed={reducedMotion ? 0 : 0.3} opacity={0.8} color="#a8efff" />
         {corners.map((points, index) => <Line key={index} points={points} color="#8cecff" lineWidth={1.1} transparent opacity={0.85} />)}
       </group>
     </>
@@ -68,7 +73,7 @@ function SceneGeometry({ reducedMotion }: { reducedMotion: boolean }) {
 
 export default function CyberHeadScene({ className }: { className?: string }) {
   const reducedMotion = useReducedMotion() ?? false;
-  const classes = twMerge(clsx("cyber-scene relative isolate h-[190px] w-full overflow-hidden sm:h-[220px] md:h-[258px]", className));
+  const classes = twMerge(clsx("cyber-scene relative isolate h-[220px] w-full overflow-hidden sm:h-[250px] md:h-[300px]", className));
 
   return (
     <motion.figure
@@ -79,7 +84,14 @@ export default function CyberHeadScene({ className }: { className?: string }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.55, ease: "easeOut" }}
     >
-      <img src="/HEAD.jpg" alt="" className="absolute inset-0 size-full object-cover object-[55%_42%]" />
+      <motion.img
+        src="/HEAD.jpg"
+        alt=""
+        className="absolute inset-y-0 right-0 z-[1] h-full w-[88%] object-cover object-[55%_42%] md:w-[78%]"
+        style={{ maskImage: "linear-gradient(90deg, transparent 0%, #000 10%, #000 100%)" }}
+        animate={reducedMotion ? { scale: 1.04 } : { scale: [1.04, 1.085, 1.04], x: [0, 5, 0], y: [0, -3, 0] }}
+        transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
+      />
       <Canvas
         aria-hidden="true"
         className="!absolute inset-0 z-10"
@@ -92,6 +104,7 @@ export default function CyberHeadScene({ className }: { className?: string }) {
         <SceneGeometry reducedMotion={reducedMotion} />
       </Canvas>
       <figcaption className="pointer-events-none absolute inset-0 z-20">
+        <span className="scene-wordmark absolute bottom-5 left-4 font-display text-5xl uppercase leading-none sm:text-6xl">Defense</span>
         <span className="scene-glass absolute left-3 top-3 flex items-center gap-2 px-2.5 py-1.5 text-[9px] uppercase tracking-[0.08em]">
           <span className="size-1.5 animate-pulse bg-cyan-400 shadow-[0_0_9px_#00c8ff]" /> Visual guard / active
         </span>

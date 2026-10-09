@@ -93,8 +93,37 @@ button:active:not(:disabled) { transform: translateY(1px); }
 	border: 1px solid rgb(var(--color-accent) / 0.48);
 	backdrop-filter: blur(14px);
 }
-.cyber-scene { background: #030b16; }
+.cyber-scene {
+	background-color: #030b16;
+	background-image: linear-gradient(110deg, rgb(248 252 253 / 0.16), transparent 65%), url("/image%20and%20background.jpg");
+	background-size: 180% auto;
+	background-position: 74% 30%;
+}
+[data-theme="dark"] .cyber-scene {
+	background-image: linear-gradient(110deg, rgb(3 11 22 / 0.08), rgb(3 11 22 / 0.25)), url("/midnight%20chrome.jpg");
+	background-position: 100% 50%;
+}
 .cyber-scene canvas { touch-action: pan-y; }
+.scene-wordmark { color: rgb(190 245 255 / 0.28); mix-blend-mode: screen; text-shadow: 0 0 20px rgb(0 200 255 / 0.26); }
+.cyber-scene::before {
+	position: absolute;
+	inset: 0;
+	content: "";
+	background: linear-gradient(90deg, rgb(var(--color-bg) / 0.18), transparent 48%);
+	pointer-events: none;
+}
+.cyber-scene::after {
+	position: absolute;
+	z-index: 15;
+	inset-block: 0;
+	left: -28%;
+	width: 18%;
+	content: "";
+	background: linear-gradient(90deg, transparent, rgb(117 231 255 / 0.16), transparent);
+	transform: skewX(-18deg);
+	animation: scene-sweep 6.5s ease-in-out infinite;
+	pointer-events: none;
+}
 .cyan-rule { background: linear-gradient(90deg, #08b8df, rgba(8, 184, 223, 0)); }
 .model-banner { background: rgb(var(--banner-bg) / 0.92); color: rgb(var(--banner-text)); }
 .theme-toggle { @apply grid size-10 place-items-center border border-edge bg-panel text-text hover:border-cyan-500 hover:text-accent; }
@@ -111,4 +140,12 @@ button:active:not(:disabled) { transform: translateY(1px); }
 	to { opacity: 1; transform: translateY(0); }
 }
 
-@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+@keyframes scene-sweep {
+	0%, 35% { left: -28%; }
+	75%, 100% { left: 112%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	* { animation: none !important; transition: none !important; }
+	.cyber-scene::after { display: none; }
+}
