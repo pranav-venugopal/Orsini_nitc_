@@ -9,8 +9,8 @@ export default function ChatComposer({ onSend, disabled }: { onSend: (t: string)
     setText("");
   };
   return (
-    <div className="sticky bottom-0 border-t border-edge/80 bg-panel/90 px-0 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl">
-      <div className="flex items-end gap-3 border border-edge bg-panel/90 p-2 shadow-[0_10px_35px_rgba(18,79,96,0.1)] focus-within:border-cyan-600">
+    <div className="sticky bottom-0 border-t border-edge/45 bg-panel/45 px-0 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-2xl">
+      <div className="flex items-end gap-3 rounded-[22px] border border-edge/65 bg-panel/72 p-2 shadow-[0_16px_48px_rgba(18,79,96,0.16),inset_0_1px_0_rgba(255,255,255,0.65)] backdrop-blur-2xl focus-within:border-cyan-500/80">
         <label htmlFor="msg" className="sr-only">Message</label>
         <textarea id="msg" rows={1} value={text} maxLength={4000} disabled={disabled}
         onChange={(e) => setText(e.target.value)}

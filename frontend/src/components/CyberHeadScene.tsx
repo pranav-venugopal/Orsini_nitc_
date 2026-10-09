@@ -73,7 +73,7 @@ function SceneGeometry({ reducedMotion }: { reducedMotion: boolean }) {
 
 export default function CyberHeadScene({ className }: { className?: string }) {
   const reducedMotion = useReducedMotion() ?? false;
-  const classes = twMerge(clsx("cyber-scene relative isolate h-[220px] w-full overflow-hidden sm:h-[250px] md:h-[300px]", className));
+  const classes = twMerge(clsx("cyber-scene relative isolate h-[220px] w-full overflow-hidden rounded-[28px] shadow-[0_22px_65px_rgba(9,52,79,0.2)] sm:h-[250px] md:h-[300px]", className));
 
   return (
     <motion.figure
@@ -105,12 +105,31 @@ export default function CyberHeadScene({ className }: { className?: string }) {
       </Canvas>
       <figcaption className="pointer-events-none absolute inset-0 z-20">
         <span className="scene-wordmark absolute bottom-5 left-4 font-display text-5xl uppercase leading-none sm:text-6xl">Defense</span>
-        <span className="scene-glass absolute left-3 top-3 flex items-center gap-2 px-2.5 py-1.5 text-[9px] uppercase tracking-[0.08em]">
+        <motion.span
+          className="scene-glass absolute left-3 top-3 flex items-center gap-2 px-3 py-2 text-[9px] uppercase tracking-[0.08em]"
+          initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, delay: 0.16 }}
+        >
           <span className="size-1.5 animate-pulse bg-cyan-400 shadow-[0_0_9px_#00c8ff]" /> Visual guard / active
-        </span>
-        <span className="scene-glass absolute bottom-3 right-3 px-2.5 py-1.5 font-mono text-[9px] uppercase tracking-[0.06em]">
+        </motion.span>
+        <motion.span
+          className="scene-glass absolute right-3 top-12 flex items-center gap-2 px-3 py-2 text-[9px] uppercase tracking-[0.08em]"
+          animate={reducedMotion ? { y: 0 } : { y: [0, -5, 0] }}
+          transition={{ duration: 5.4, delay: 0.45, repeat: Infinity, ease: "easeInOut" }}
+        >
+          <span className="flex h-3 items-end gap-0.5" aria-hidden>
+            <i className="h-1 w-0.5 bg-cyan-200/60" /><i className="h-2 w-0.5 bg-cyan-200" /><i className="h-1.5 w-0.5 bg-cyan-200/75" />
+          </span>
+          Policy / enforced
+        </motion.span>
+        <motion.span
+          className="scene-glass absolute bottom-3 right-3 px-3 py-2 font-mono text-[9px] uppercase tracking-[0.06em]"
+          animate={reducedMotion ? { y: 0 } : { y: [0, 3, 0] }}
+          transition={{ duration: 6.2, delay: 0.25, repeat: Infinity, ease: "easeInOut" }}
+        >
           Threat surface / monitored
-        </span>
+        </motion.span>
       </figcaption>
     </motion.figure>
   );

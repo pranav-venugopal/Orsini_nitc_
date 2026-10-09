@@ -8,7 +8,7 @@ import type { EventsPage, Metrics } from "../types/api";
 
 const PAGE = 25;
 const CyberHeadScene = lazy(() => import("../components/CyberHeadScene"));
-const sel = "border border-edge bg-panel/80 px-3 py-2 text-sm text-text outline-none transition-colors focus:border-cyan-600";
+const sel = "rounded-xl border border-edge/70 bg-panel/65 px-4 py-2.5 text-sm text-text shadow-sm outline-none backdrop-blur-lg transition-colors focus:border-cyan-600";
 const percent = (rate: number | null) => rate === null ? "—" : `${(rate * 100).toFixed(1)}%`;
 
 export default function SecurityDashboardPage() {
@@ -39,7 +39,7 @@ export default function SecurityDashboardPage() {
             <p className="mb-2 text-[10px] uppercase text-mute">Live telemetry / policy outcomes</p>
             <h1 className="font-display text-5xl uppercase leading-none text-text md:text-6xl">Security monitor</h1>
           </div>
-          <button onClick={load} className="inline-flex h-10 items-center gap-2 bg-brand px-4 text-sm font-medium text-white hover:bg-brand-hover"><RefreshCw size={15} /> Refresh</button>
+          <button onClick={load} className="inline-flex h-11 items-center gap-2 rounded-full bg-brand px-5 text-sm font-medium text-white shadow-lg shadow-cyan-950/15 hover:bg-brand-hover"><RefreshCw size={15} /> Refresh</button>
         </div>
         <Suspense fallback={<div className="cyber-scene h-[220px] w-full sm:h-[250px] md:h-[300px]"><img src="/HEAD.jpg" alt="" className="size-full object-cover object-[55%_42%]" /></div>}>
           <CyberHeadScene className="h-[220px] sm:h-[250px] md:h-[300px]" />

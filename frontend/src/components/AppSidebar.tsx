@@ -41,7 +41,7 @@ export default function AppSidebar({ theme, onToggleTheme }: { theme: "light" | 
             return (
               <li key={link.to}>
                 <NavLink to={link.to} end onClick={() => setOpen(false)}
-                  className={`group flex items-center gap-3 border-l-2 px-3 py-3 text-sm transition-colors ${isActive ? "border-cyan-300 bg-cyan-300/10 text-white shadow-[inset_18px_0_32px_-28px_rgba(77,228,255,0.65)]" : "border-transparent text-white/60 hover:border-white/20 hover:bg-white/[0.04] hover:text-white"}`}>
+                  className={`group flex items-center gap-3 rounded-xl border px-3 py-3 text-sm transition-all duration-300 ${isActive ? "border-cyan-200/25 bg-cyan-300/[0.12] text-white shadow-[0_10px_35px_rgba(0,200,255,0.1),inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-xl" : "border-transparent text-white/60 hover:border-white/10 hover:bg-white/[0.06] hover:text-white"}`}>
                   <Icon size={18} strokeWidth={1.8} className={isActive ? "text-cyan-200" : "text-white/45 group-hover:text-cyan-100"} />
                   <span className="flex-1">{link.label}</span>
                   {isActive && <span className="size-1.5 bg-cyan-300 shadow-[0_0_10px_#37dbfa]" />}
