@@ -1,4 +1,6 @@
 
+import os
+
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
@@ -115,7 +117,14 @@ class MainLLM:
 
 
 def main():
-    engine = GuardrailsEngine()
+    # Safety remains local and independent from the local generation model.
+    engine = GuardrailsEngine(
+        GuardrailsEngine.default_guards(
+            use_llama_guard=True,
+            llama_guard_model_id=os.getenv("LLAMA_GUARD_MODEL_ID", "meta-llama/Llama-Guard-3-1B"),
+        )
+    )
+    
     llm = MainLLM()
 
     print("=" * 55)

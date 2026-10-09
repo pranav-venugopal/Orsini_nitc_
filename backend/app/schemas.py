@@ -16,6 +16,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     conversation_id: Optional[str] = None
     mode: Mode = "guarded"
+    model_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -40,6 +41,9 @@ class SecurityEvent(BaseModel):
     categories: list[str]
     action: str
     latency_ms: int
+    user_prompt: Optional[str] = None
+    attempted_output: Optional[str] = None
+    final_output: Optional[str] = None
 
 
 class EventsPage(BaseModel):
@@ -56,3 +60,16 @@ class Metrics(BaseModel):
     redactions: int = 0
     average_latency_ms: Optional[float]
     evaluation_summary: Optional[dict] = None
+
+
+class ChatHistoryMessage(BaseModel):
+    message_id: str
+    request_id: str
+    conversation_id: str
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: str
+
+
+class ChatHistoryPage(BaseModel):
+    items: list[ChatHistoryMessage]

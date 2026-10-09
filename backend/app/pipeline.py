@@ -1,6 +1,8 @@
 """Security pipeline: input check -> generate -> output check. The backend decides; the UI only displays."""
+import logging
 import time
 import uuid
+from typing import Any
 
 from . import events
 from .config import settings
@@ -10,13 +12,18 @@ from .schemas import Check, ChatRequest, ChatResponse
 REFUSAL = "I can't help with that request."
 BLOCKED_OUTPUT = "The generated answer was withheld by the safety check."
 ERROR_MSG = "A safety check could not be completed, so the request was stopped. Please try again."
+logger = logging.getLogger(__name__)
 
 
 def _build():
-    if settings.model_mode == "real":
+    if settings.model_mode == "local":
         from .generator import QwenGenerator
         from .guard import LlamaGuard
-        return LlamaGuard(settings.guard_model_id, settings.hf_token), QwenGenerator(settings.qwen_model_id, settings.hf_token), False
+        return LlamaGuard(settings.guard_model_id), QwenGenerator(settings.qwen_model_id), False
+    elif settings.model_mode == "groq":
+        from .generator import GroqGenerator
+        from .guard import GroqGuard
+        return GroqGuard("meta-llama/llama-prompt-guard-2-86m"), GroqGenerator(), False
     from .generator import MockGenerator
     from .guard import MockGuard
     return MockGuard(), MockGenerator(), True
@@ -25,55 +32,111 @@ def _build():
 guard, generator, MOCK = _build()
 
 
-def _check(text: str, role: str) -> Check:
+def model_diagnostics() -> dict[str, Any]:
+    if MOCK:
+        return {
+            "model_mode": settings.model_mode,
+            "mock_models": True,
+            "runtime_available": False,
+            "runtime_message": "The app is using stand-in models.",
+            "cuda_available": None,
+            "gpu_name": None,
+            "gpu_memory_allocated_gib": None,
+            "gpu_memory_reserved_gib": None,
+            "generator": {"model_id": "mock", "loaded": False, "device_map": None, "dtype": None},
+            "guard": {"model_id": "mock", "loaded": False, "device_map": None, "dtype": None},
+        }
+
+    generator_info = generator.diagnostics()
+    guard_info = guard.diagnostics()
+    return {
+        "model_mode": settings.model_mode,
+        "mock_models": False,
+        "runtime_available": (
+            generator_info["runtime_available"] and guard_info["runtime_available"]
+        ),
+        "runtime_message": (
+            generator_info["runtime_message"] or guard_info["runtime_message"]
+        ),
+        "cuda_available": generator_info["cuda_available"],
+        "gpu_name": generator_info["gpu_name"],
+        "gpu_memory_allocated_gib": generator_info["gpu_memory_allocated_gib"],
+        "gpu_memory_reserved_gib": generator_info["gpu_memory_reserved_gib"],
+        "generator": generator_info,
+        "guard": guard_info,
+    }
+
+
+def _check(text: str, role: str, context: str | None = None) -> Check:
     try:
-        c = guard.classify(text, role)
+        c = guard.classify(text, role, context)
         return c if c.label in ("safe", "unsafe") else Check(label="error")
     except Exception:
+        logger.exception("Safety classifier failed for role %s", role)
         return Check(label="error")  # never silently safe
 
 
-def run_chat(req: ChatRequest) -> ChatResponse:
+def _generate(message: str, model_id: str | None) -> str:
+    if model_id is None:
+        return generator.generate(message)
+    return generator.generate(message, model_id=model_id)
+
+
+def run_chat(req: ChatRequest, username: str) -> ChatResponse:
     rid = f"req_{uuid.uuid4().hex[:10]}"
+    conversation_id = req.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
     t0 = time.perf_counter()
+    persisted_message, _ = redact_sensitive(req.message)
+    events.log_chat_message(rid, conversation_id, username, "user", persisted_message)
 
     def ms(since: float) -> int:
         return int((time.perf_counter() - since) * 1000)
 
     def done(status, answer, action, ic=None, oc=None):
-        resp = ChatResponse(request_id=rid, conversation_id=req.conversation_id, status=status, answer=answer,
-                            input_check=ic, output_check=oc, action=action, latency_ms=ms(t0),
-                            mode=req.mode, mock_models=MOCK)
+        resp = ChatResponse(request_id=rid, conversation_id=conversation_id, status=status, answer=answer,
+                             input_check=ic, output_check=oc, action=action, latency_ms=ms(t0),
+                             mode=req.mode, mock_models=MOCK)
         events.log_request(rid, status, req.mode, resp.latency_ms)
+        persisted_answer, _ = redact_sensitive(answer)
+        events.log_chat_message(rid, conversation_id, username, "assistant", persisted_answer)
         return resp
 
     if req.mode == "baseline":
         try:
-            return done("completed", generator.generate(req.message), "returned_unchecked")
+            return done("completed", _generate(req.message, req.model_id), "returned_unchecked")
         except Exception:
+            logger.exception("Baseline model generation failed")
             return done("error", ERROR_MSG, "error")
 
     t = time.perf_counter()
-    ic = _check(req.message, "user")
+    sanitized_message, input_sensitive_categories = redact_sensitive(req.message)
+    ic = _check(sanitized_message, "user")
     if ic.label != "safe":
         action = "error" if ic.label == "error" else "blocked_input"
         events.log_event(rid, "input", ic.label, ic.categories, action, ms(t))
         return done("error" if ic.label == "error" else "blocked",
                     ERROR_MSG if ic.label == "error" else REFUSAL, action, ic=ic)
-    events.log_event(rid, "input", "safe", [], "passed", ms(t))
+    if input_sensitive_categories:
+        input_sensitive_categories = sorted(input_sensitive_categories)
+        ic = Check(label="safe", categories=input_sensitive_categories)
+        events.log_event(rid, "input", "safe", input_sensitive_categories, "redacted", ms(t))
+    else:
+        events.log_event(rid, "input", "safe", [], "passed", ms(t))
 
     try:
-        answer = generator.generate(req.message)
+        answer = _generate(sanitized_message, req.model_id)
     except Exception:
+        logger.exception("Guarded model generation failed")
         return done("error", ERROR_MSG, "error", ic=ic)
 
     t = time.perf_counter()
     sanitized_answer, sensitive_categories = redact_sensitive(answer)
-    oc = _check(sanitized_answer, "assistant")
+    oc = _check(sanitized_answer, "assistant", context=sanitized_message)
     if oc.label != "safe":
         action = "error" if oc.label == "error" else "blocked_output"
         categories = sorted(set(oc.categories + sensitive_categories))
         events.log_event(rid, "output", oc.label, categories, action, ms(t))
+        events.log_chat_message(rid, conversation_id, username, "attempted_output", answer)
         # TODO(model owner): optional "safe retry" (regenerate with a stricter prompt) before blocking.
         return done("error" if oc.label == "error" else "blocked",
                     ERROR_MSG if oc.label == "error" else BLOCKED_OUTPUT, action, ic=ic,
