@@ -253,6 +253,12 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
             oc_latency = int(getattr(output_result, "latency_ms", 0))
             events.log_event(rid, "output", oc_label, oc_categories, oc_action, oc_latency)
 
+        # If model generated a response that was blocked by output guard, persist attempted output
+        if output_result is not None and not output_result.allowed:
+            attempted_raw = getattr(output_result, "raw_text", "")
+            if attempted_raw:
+                events.log_chat_message(rid, conversation_id, username, "attempted_output", attempted_raw)
+
         # Log overall request
         events.log_request(rid, status_val, req.mode, latency)
 
@@ -329,6 +335,15 @@ def get_security_events(
 ) -> dict:
     items, total = events.list_events(limit, offset, stage, action, since, until)
     return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@app.get("/security/events/{request_id}")
+def get_security_event_details(
+    request_id: str,
+    _admin: SessionUser = Depends(check_admin),
+) -> dict[str, Any]:
+    return events.get_request_chat_details(request_id)
+
 
 
 @app.get("/security/diagnostics")

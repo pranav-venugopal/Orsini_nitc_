@@ -22,9 +22,17 @@ export interface ChatResponse {
 }
 
 export interface SecurityEvent {
-  event_id: string; timestamp: string; request_id: string;
-  stage: "input" | "output"; label: Label; categories: string[];
-  action: string; latency_ms: number;
+  event_id: string;
+  timestamp: string;
+  request_id: string;
+  stage: "input" | "output";
+  label: Label;
+  categories: string[];
+  action: string;
+  latency_ms: number;
+  user_prompt?: string | null;
+  attempted_output?: string | null;
+  final_output?: string | null;
 }
 export interface EventsPage { items: SecurityEvent[]; total: number; limit: number; offset: number }
 
@@ -68,3 +76,31 @@ export interface EvaluationSummary {
 export interface Health { status: string; model_mode: string; mock_models: boolean }
 export interface LoginResponse { access_token: string; token_type: "bearer"; user: SessionUser }
 export interface RedTeamPrompt { id: string; category: "benign" | "prompt_injection" | "should_refuse"; prompt: string }
+
+export interface ChatMessageRecord {
+  message_id: string;
+  request_id: string;
+  conversation_id: string;
+  username: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
+export interface RequestRecord {
+  request_id: string;
+  timestamp: string;
+  status: Status;
+  mode: Mode;
+  latency_ms: number;
+}
+
+export interface RequestDetails {
+  request: RequestRecord | null;
+  events: SecurityEvent[];
+  messages: ChatMessageRecord[];
+  user_prompt?: string | null;
+  attempted_output?: string | null;
+  final_output?: string | null;
+}
+

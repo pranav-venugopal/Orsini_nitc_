@@ -70,6 +70,27 @@ def list_events(limit: int, offset: int, stage: Optional[str], action: Optional[
                 rows = database.execute(
                     cursor, f"SELECT * FROM events {clause} ORDER BY {order} LIMIT ? OFFSET ?", tuple([*args, limit, offset])
                 ).fetchall()
+                req_ids = list({row["request_id"] for row in rows if row["request_id"]})
+                prompts_by_rid: dict[str, str] = {}
+                attempted_by_rid: dict[str, str] = {}
+                final_by_rid: dict[str, str] = {}
+                if req_ids:
+                    order_msgs = "id" if database.using_postgres() else "rowid"
+                    placeholders = ",".join("?" for _ in req_ids)
+                    msg_rows = database.execute(
+                        cursor,
+                        f"SELECT request_id, role, content FROM chat_messages WHERE request_id IN ({placeholders}) ORDER BY {order_msgs} ASC",
+                        tuple(req_ids),
+                    ).fetchall()
+                    for m in msg_rows:
+                        rid = m["request_id"]
+                        role = m["role"]
+                        if role == "user" and rid not in prompts_by_rid:
+                            prompts_by_rid[rid] = m["content"]
+                        elif role == "attempted_output" and rid not in attempted_by_rid:
+                            attempted_by_rid[rid] = m["content"]
+                        elif role == "assistant" and rid not in final_by_rid:
+                            final_by_rid[rid] = m["content"]
     def categories(value: str) -> list[str]:
         """Read current JSON arrays and legacy JSON/plain string category values."""
         try:
@@ -80,7 +101,17 @@ def list_events(limit: int, offset: int, stage: Optional[str], action: Optional[
             return [item for item in parsed if isinstance(item, str)]
         return [parsed] if isinstance(parsed, str) and parsed else []
 
-    return [{**dict(row), "timestamp": _iso(row["timestamp"]), "categories": categories(row["categories"])} for row in rows], total
+    return [
+        {
+            **dict(row),
+            "timestamp": _iso(row["timestamp"]),
+            "categories": categories(row["categories"]),
+            "user_prompt": prompts_by_rid.get(row["request_id"]),
+            "attempted_output": attempted_by_rid.get(row["request_id"]),
+            "final_output": final_by_rid.get(row["request_id"]),
+        }
+        for row in rows
+    ], total
 
 
 def metrics() -> dict:
@@ -109,7 +140,7 @@ def metrics() -> dict:
 
 
 def list_chat_messages(username: str, conversation_id: str | None, limit: int) -> list[dict]:
-    where = "username = ?"
+    where = "username = ? AND role IN ('user', 'assistant')"
     args: list[str | int] = [username]
     if conversation_id:
         where += " AND conversation_id = ?"
@@ -128,3 +159,71 @@ def list_chat_messages(username: str, conversation_id: str | None, limit: int) -
 
 def _json_value(value: object) -> object:
     return json.loads(value) if isinstance(value, str) else value
+
+
+def get_request_chat_details(request_id: str) -> dict:
+    order = "id" if database.using_postgres() else "rowid"
+    with _lock:
+        with database.connection() as conn:
+            with conn.cursor() if database.using_postgres() else conn as cursor:
+                req_row = database.execute(
+                    cursor,
+                    "SELECT * FROM requests WHERE request_id = ?",
+                    (request_id,),
+                ).fetchone()
+                evt_rows = database.execute(
+                    cursor,
+                    f"SELECT * FROM events WHERE request_id = ? ORDER BY {order} ASC",
+                    (request_id,),
+                ).fetchall()
+                msg_rows = database.execute(
+                    cursor,
+                    f"SELECT * FROM chat_messages WHERE request_id = ? ORDER BY {order} ASC",
+                    (request_id,),
+                ).fetchall()
+
+    def parse_cats(val: object) -> list[str]:
+        if isinstance(val, list):
+            return val
+        if not isinstance(val, str):
+            return []
+        try:
+            parsed = json.loads(val)
+            return parsed if isinstance(parsed, list) else [parsed]
+        except Exception:
+            return [val] if val else []
+
+    req = None
+    if req_row:
+        req = {**dict(req_row), "timestamp": _iso(req_row["timestamp"])}
+
+    events_list = [
+        {
+            **dict(r),
+            "timestamp": _iso(r["timestamp"]),
+            "categories": parse_cats(r["categories"]),
+        }
+        for r in evt_rows
+    ]
+
+    messages_list = [
+        {
+            **dict(r),
+            "created_at": _iso(r["created_at"]),
+        }
+        for r in msg_rows
+    ]
+
+    user_prompt = next((m["content"] for m in messages_list if m.get("role") == "user"), None)
+    attempted_output = next((m["content"] for m in messages_list if m.get("role") == "attempted_output"), None)
+    final_output = next((m["content"] for m in messages_list if m.get("role") == "assistant"), None)
+
+    return {
+        "request": req,
+        "events": events_list,
+        "messages": messages_list,
+        "user_prompt": user_prompt,
+        "attempted_output": attempted_output,
+        "final_output": final_output,
+    }
+

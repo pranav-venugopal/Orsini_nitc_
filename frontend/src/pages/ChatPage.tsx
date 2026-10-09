@@ -5,7 +5,7 @@ import { PendingStatus } from "../components/SecurityStatus";
 import { useChat } from "../hooks/useChat";
 
 export default function ChatPage() {
-  const { messages, loading, send } = useChat();
+  const { messages, loading, send, clear } = useChat();
   const [modelId, setModelId] = useState("openai/gpt-oss-20b");
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -35,7 +35,22 @@ export default function ChatPage() {
             </select>
           </div>
         </div>
-        <span className="rounded-full border border-edge/60 bg-panel/55 px-3 py-1.5 text-[10px] text-mute backdrop-blur">Guarded mode</span>
+        <div className="flex items-center gap-2">
+          {messages.length > 0 && (
+            <button
+              type="button"
+              onClick={clear}
+              className="inline-flex items-center gap-1.5 rounded-full border border-edge/60 bg-panel/55 px-3 py-1.5 text-xs text-mute transition hover:border-red-500/40 hover:text-red-400"
+              title="Start a new chat session"
+            >
+              <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span>New chat</span>
+            </button>
+          )}
+          <span className="rounded-full border border-edge/60 bg-panel/55 px-3 py-1.5 text-[10px] text-mute backdrop-blur">Guarded mode</span>
+        </div>
       </div>
       <div className="chat-transcript flex-1 space-y-5 overflow-y-auto py-5 md:py-7" aria-live="polite">
         {messages.length === 0 && (

@@ -9,6 +9,7 @@ import ChatPage from "../pages/ChatPage";
 import RedTeamPage from "../pages/RedTeamPage";
 import SecurityDashboardPage from "../pages/SecurityDashboardPage";
 import { api, clearSession, hasSession } from "../services/api";
+import { resetChatCache } from "../hooks/useChat";
 import type { SessionUser } from "../types/api";
 
 type Theme = "light" | "dark";
@@ -83,7 +84,7 @@ export default function App() {
     setUser(signedUpUser);
     return signedUpUser;
   };
-  const signOut = () => { clearSession(); setUser(null); };
+  const signOut = () => { clearSession(); resetChatCache(); setUser(null); };
   const toggleTheme = () => setTheme((current) => current === "dark" ? "light" : "dark");
 
   return (

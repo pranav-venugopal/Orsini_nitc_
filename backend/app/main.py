@@ -81,6 +81,11 @@ def security_events(limit: int = Query(25, ge=1, le=100), offset: int = Query(0,
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
+@app.get("/security/events/{request_id}")
+def security_event_details(request_id: str, _admin: SessionUser = Depends(require_admin)):
+    return events.get_request_chat_details(request_id)
+
+
 @app.get("/redteam/prompts")
 def redteam_prompts(_admin: SessionUser = Depends(require_admin)):
     return {"items": REDTEAM_PROMPTS}

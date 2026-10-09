@@ -1,7 +1,9 @@
-import type { ChatResponse, EventsPage, Health, LoginResponse, Metrics, Mode, ModelDiagnostics, RedTeamPrompt, SessionUser } from "../types/api";
+import type { ChatResponse, EventsPage, Health, LoginResponse, Metrics, Mode, ModelDiagnostics, RedTeamPrompt, RequestDetails, SessionUser } from "../types/api";
 
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 const SESSION_KEY = "secure-ai-access-token";
+export const CHAT_STORAGE_KEY = "aegis-chat-messages";
+export const CONV_STORAGE_KEY = "aegis-chat-conversation-id";
 
 export class ApiError extends Error {
   constructor(message: string, readonly field?: string) {
@@ -14,7 +16,11 @@ function storedToken() {
 }
 
 export function clearSession() {
-  window.sessionStorage.removeItem(SESSION_KEY);
+  if (typeof window !== "undefined") {
+    window.sessionStorage.removeItem(SESSION_KEY);
+    window.sessionStorage.removeItem(CHAT_STORAGE_KEY);
+    window.sessionStorage.removeItem(CONV_STORAGE_KEY);
+  }
 }
 
 export function hasSession() {
@@ -84,6 +90,10 @@ export const api = {
       throw new ApiError("The server sent a response the app doesn't understand.");
     return r;
   },
+  history: (conversationId?: string | null) => {
+    const q = conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : "";
+    return request<{ items: Array<{ message_id: string; request_id: string; conversation_id: string; role: "user" | "assistant"; content: string; created_at: string }> }>(`/chat/history${q}`, undefined, 10000);
+  },
   metrics: () => request<Metrics>("/security/metrics", undefined, 10000),
   modelDiagnostics: () => request<ModelDiagnostics>("/security/diagnostics", undefined, 10000),
   events: (p: { limit: number; offset: number; stage?: string; action?: string }) => {
@@ -92,5 +102,6 @@ export const api = {
     if (p.action) q.set("action", p.action);
     return request<EventsPage>(`/security/events?${q}`, undefined, 10000);
   },
+  eventDetails: (requestId: string) => request<RequestDetails>(`/security/events/${encodeURIComponent(requestId)}`, undefined, 10000),
   redteamPrompts: () => request<{ items: RedTeamPrompt[] }>("/redteam/prompts", undefined, 10000),
 };

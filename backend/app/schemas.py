@@ -41,6 +41,9 @@ class SecurityEvent(BaseModel):
     categories: list[str]
     action: str
     latency_ms: int
+    user_prompt: Optional[str] = None
+    attempted_output: Optional[str] = None
+    final_output: Optional[str] = None
 
 
 class EventsPage(BaseModel):
