@@ -21,6 +21,7 @@ import html
 import ipaddress
 import json
 import logging
+import os
 import re
 import socket
 import time
@@ -1366,9 +1367,17 @@ class GuardrailsEngine:
 
     @staticmethod
     def default_guards(use_llama_guard=False, llama_guard_model_id="meta-llama/Llama-Guard-3-1B", semantic=False, canaries=(), system_prompt="") -> list:
+        enable_semantic = semantic or os.getenv("ENABLE_SEMANTIC", "").strip().lower() in ("true", "1", "yes")
         g = [LengthGuard(), PatternGuard(), InjectionGuard(), ObfuscationGuard(), LanguageGuard(), PIIGuard(), LeakGuard(canaries=canaries, system_prompt=system_prompt)]
-        if semantic:
-            g.append(SemanticGuard())
+        if enable_semantic:
+            try:
+                import sentence_transformers  # noqa: F401
+                g.append(SemanticGuard())
+            except ImportError:
+                import logging
+                logging.getLogger("guardrails_engine").warning(
+                    "ENABLE_SEMANTIC is true but sentence-transformers is not installed; skipping SemanticGuard."
+                )
         if use_llama_guard:
             g.append(LlamaGuardClassifier(model_id=llama_guard_model_id))
         return g
