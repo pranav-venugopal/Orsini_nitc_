@@ -199,7 +199,10 @@ _COMMON = frozenset((
     "just him know take people into year your good some could them see other than then now look only come its over "
     "think also back after use two how our work first well way even new want because any these give day most us is "
     "are was were been has had did does am please ignore previous instructions disregard forget rules system prompt "
-    "reveal safety guidelines tell show secret password write create explain steps").split())
+    "reveal safety guidelines tell show secret password write create explain steps "
+    "help against company files file browser computer access data user users code script test account accounts "
+    "send call find message key keys token tokens database server servers private public free read print run "
+    "start stop check need give ask try keep let put steal victim weapon weapons malware ransomware bomb").split())
 
 
 def _eng(t: str) -> float:
@@ -290,9 +293,9 @@ def _d_binary(t):
 
 def _d_decimal(t):
     out = []
-    for m in list(re.finditer(r"(?:\b\d{2,3}\b[\s,]+){7,}\b\d{2,3}\b", t))[:5]:
+    for m in list(re.finditer(r"(?:\b\d{1,3}\b[\s,]+){7,}\b\d{1,3}\b", t))[:5]:
         nums = [int(x) for x in re.findall(r"\d+", m.group())]
-        if all(32 <= n <= 126 for n in nums) and _plaus(d := "".join(map(chr, nums))):
+        if all(0 <= n <= 255 for n in nums) and (d := _utf8(bytes(nums))):
             out.append(("decimal", d))
     return out
 
@@ -372,12 +375,22 @@ def is_encoding(step: str) -> bool:
     return step in _ENCODINGS or step.startswith("caesar")
 
 
-_OBFUSCATION = {"reversed", "reversed_words", "reversed_each", "leet_i", "leet_l"}
+def _unspace(t: str) -> str:
+    if len(re.findall(r"(?<=\b[a-z0-9])\s+(?=[a-z0-9]\b)", t)) >= 2:
+        if "  " in t:
+            parts = [re.sub(r"(?<=\b[a-z0-9])\s+(?=[a-z0-9]\b)", "", p) for p in t.split("  ")]
+            return " ".join(p for p in parts if p)
+        return re.sub(r"(?<=\b[a-z0-9])\s+(?=[a-z0-9]\b)", "", t)
+    return t
+
+
+_OBFUSCATION = {"reversed", "reversed_words", "reversed_each", "leet_i", "leet_l", "unspace"}
 
 COSMETIC = [  # name, fn(casefolded text) -> text
     ("fold", _fold),
     ("leet_i", lambda t: _leet(t, _LEET_I)),
     ("leet_l", lambda t: _leet(t, _LEET_L)),
+    ("unspace", _unspace),
     ("reversed", lambda t: t[::-1]),
     ("reversed_words", lambda t: " ".join(reversed(t.split()))),
     ("reversed_each", lambda t: " ".join(w[::-1] for w in t.split())),
@@ -611,7 +624,7 @@ MAKE = I("make build construct assemble synthesize synthesise create produce fab
 WEAPON = I("bomb explosive detonator ied molotov grenade landmine dynamite napalm thermite sarin vx tabun soman ricin "
            "anthrax botulinum semtex rdx hmx petn tnt anfo nitroglycerin nitroglycerine gunpowder bioweapon silencer "
            "suppressor autosear bumpstock ghostgun zipgun c4 chemweapon firebomb") | W(
-    "bomba bombe bombes explosivo explosif explosifs sprengstoff granada granate dinamita sprengsatz")
+    "bomba bombe bombes explosivo explosif explosifs sprengstoff granada granate dinamita sprengsatz waffe waffen arme armes")
 INSTR, INTENT = W("howto"), W("intent")
 I2 = INSTR | INTENT
 ACQ = I("buy get obtain acquire purchase order source smuggle score")
@@ -641,12 +654,13 @@ MINOR = W("child children kid kids minor minors underage preteen preteens toddle
 SEX_HARD = W("nude nudes naked porn porno pornography pornographic erotic erotica fondle fondling molest molesting "
              "masturbate masturbating nsfw sexting")
 SEX_SOFT = W("sex sexual sexually explicit sexy")
-CREATE = I("write create generate build code develop make design program implement")
+CREATE = I("write create generate build code develop make design program implement") | W(
+    "escribe escribir crear creer fabriquer ecrire ecris schreibe schreiben erstelle erstellen")
 MAL = W("ransomware keylogger malware botnet trojan rootkit spyware backdoor crypter infostealer stealer dropper phishing "
         "skimmer ransomwares keyloggers")
-HACK = W("hack hacks hacked hacking crack cracked cracking bruteforce brute breakinto infiltrate hijack")
+HACK = W("hack hacks hacked hacking crack cracked cracking bruteforce brute breakinto infiltrate hijack pirate pirater piratea piratear hacken gehackt hackea hackear hacke")
 ACCT = W("account accounts password passwords email wifi instagram facebook snapchat whatsapp twitter tiktok gmail icloud "
-         "phone server database")
+         "phone server database cuenta cuentas passwort passworter motdepasse motdepasses contrasena contrasenas passwörter")
 THIRD = W("someone somebody his her their ex girlfriend boyfriend wife husband neighbor neighbour boss friend")
 DRUGS = W("methamphetamine methanphetamine methamphetamin methanphgetamine desoxyephedrine methylamphetamine pervitin crystal meth opium morphine codeine heroin fentanyl carfentanil oxycodone hydrocodone cocaine crack lsd acid mdma ecstasy molly psilocybin pcp ghb dmt ketamine quaalude quaaludes amphetamine narcotics")
 GROUPS = W("jews jewish muslims muslim christians blacks asians hispanics mexicans immigrants refugees gays lesbians "
@@ -884,10 +898,13 @@ class InjectionGuard(Guard):
         ("exfil.md_image", r"!\[[^\]]*\]\(\s*https?://[^)\s]*[?&][^)\s]*=[^)\s]*\)"),
     ]]
     ML = re.compile("|".join(_N(p) for p in [
-        r"ignora(?:todas)?(?:las)?instruccionesanteriores", r"(?:olvida|olvide)(?:todas)?(?:las)?instruccionesanteriores",
-        r"(?:ignore|ignorez|oublie|oubliez)(?:toutes)?(?:les)?instructions(?:precedentes|anterieures)",
-        r"(?:ignoriere|vergiss)(?:alle)?(?:vorherigen|fruheren|bisherigen)(?:anweisungen|instruktionen)",
-        r"ignore(?:todas)?(?:as)?instrucoesanteriores", r"ignora(?:tutte)?(?:le)?istruzioni(?:precedenti|anteriori)",
+        r"ignora(?:todas)?(?:las)?instrucciones(?:anteriores|previas)?", r"(?:olvida|olvide)(?:todas)?(?:las)?instrucciones(?:anteriores|previas)?",
+        r"(?:revela|muestra|divulga)(?:tu)?(?:prompt)?",
+        r"(?:ignore|ignorez|oublie|oubliez)(?:toutes)?(?:les)?instructions(?:precedentes?|anterieures?)?",
+        r"(?:revele|affiche|montre)(?:ton|votre)?(?:prompt)?",
+        r"(?:ignoriere|vergiss)(?:alle)?(?:vorherigen?|fruheren?|bisherigen?)(?:anweisungen|instruktionen)?",
+        r"(?:zeige|offenbare)(?:deinen)?(?:prompt)?",
+        r"ignore(?:todas)?(?:as)?instrucoes(?:anteriores)?", r"ignora(?:tutte)?(?:le)?istruzioni(?:precedenti?|anteriori?)?",
         r"negeer(?:alle)?(?:de)?(?:vorige|eerdere)instructies", r"abaikan(?:semua)?instruksi(?:sebelumnya|diatas)",
         r"(?:игнорируй|забудь)(?:все)?(?:предыдущие|прошлые)(?:инструкции|указания)",
         r"(?:忽略|无视|忽视|忽略)(?:之前|以上|先前|上述|所有)(?:的)?(?:所有)?(?:指令|指示|说明|提示)",
