@@ -1,4 +1,4 @@
-import { Crosshair, LayoutDashboard, LogOut, MessageSquare } from "lucide-react";
+import { Crosshair, LayoutDashboard, LogOut, MessageSquare, Wrench } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import ThemeToggle from "./ThemeToggle";
 import Brand from "./Brand";
@@ -6,6 +6,7 @@ import type { UserRole } from "../types/api";
 
 const links = [
   { to: "/chat", label: "Assistant", icon: MessageSquare },
+  { to: "/tools", label: "Agent tools", icon: Wrench },
   { to: "/dashboard", label: "Security monitor", icon: LayoutDashboard },
   { to: "/red-team", label: "Red-team lab", icon: Crosshair },
 ];
@@ -17,7 +18,7 @@ export default function WorkspaceNav({ theme, role, username, onToggleTheme, onS
   onToggleTheme: () => void;
   onSignOut: () => void;
 }) {
-  const visibleLinks = role === "admin" ? links : links.slice(0, 1);
+  const visibleLinks = role === "admin" ? links : links.slice(0, 2);
   return (
     <header className="workspace-header z-30 shrink-0 border-b border-edge/55 px-4 py-3 backdrop-blur-2xl md:px-8">
       <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-5 gap-y-2">

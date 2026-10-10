@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, Eye, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 import EventInspectorModal from "./EventInspectorModal";
 
-const ICON: Record<string, string> = { safe: "✓", unsafe: "✕", error: "!" };
+const ICON: Record<string, string> = { safe: "✓", unsafe: "✕", error: "!", review: "⚠️" };
 
 export default function EventsTable({ items }: { items: SecurityEvent[] }) {
   const reducedMotion = useReducedMotion() ?? false;
@@ -68,6 +68,10 @@ export default function EventsTable({ items }: { items: SecurityEvent[] }) {
                       className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium uppercase ${
                         e.stage === "input"
                           ? "border border-cyan-500/30 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400"
+                          : e.stage === "tool"
+                          ? "border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                          : e.stage === "context"
+                          ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                           : "border border-purple-500/30 bg-purple-500/10 text-purple-600 dark:text-purple-400"
                       }`}
                     >
@@ -119,6 +123,27 @@ export default function EventsTable({ items }: { items: SecurityEvent[] }) {
                         <span className="font-semibold text-rose-500">{e.action}</span>
                         <span className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] text-rose-400">
                           <AlertTriangle size={10} /> Intercepted AI
+                        </span>
+                      </div>
+                    ) : e.action === "blocked_hallucination" ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-semibold text-rose-400">{e.action}</span>
+                        <span className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] text-rose-400">
+                          <ShieldAlert size={10} /> Factuality Guard
+                        </span>
+                      </div>
+                    ) : e.action === "blocked_tool" ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-semibold text-rose-400">{e.action}</span>
+                        <span className="inline-flex items-center gap-1 rounded bg-rose-500/10 px-1.5 py-0.5 text-[10px] text-rose-400">
+                          <ShieldAlert size={10} /> Tool Blocked
+                        </span>
+                      </div>
+                    ) : e.action === "review_required" ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-semibold text-amber-400">{e.action}</span>
+                        <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400">
+                          <AlertTriangle size={10} /> Approval Needed
                         </span>
                       </div>
                     ) : (

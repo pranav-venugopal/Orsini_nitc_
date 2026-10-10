@@ -12,8 +12,8 @@ export default function ChatPage() {
     end.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  const handleSend = (text: string) => {
-    send(text, modelId);
+  const handleSend = (text: string, context?: string[]) => {
+    send(text, modelId, context);
   };
 
   return (

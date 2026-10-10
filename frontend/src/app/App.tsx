@@ -6,6 +6,7 @@ import HomePage from "../pages/HomePage";
 import LoginPage from "../pages/LoginPage";
 import SignupPage from "../pages/SignupPage";
 import ChatPage from "../pages/ChatPage";
+import AgentToolsPage from "../pages/AgentToolsPage";
 import RedTeamPage from "../pages/RedTeamPage";
 import SecurityDashboardPage from "../pages/SecurityDashboardPage";
 import { api, clearSession, hasSession } from "../services/api";
@@ -94,6 +95,7 @@ export default function App() {
       <Route path="/signup" element={!sessionReady ? <SessionLoading /> : user ? <Navigate to="/chat" replace /> : <SignupPage theme={theme} onToggleTheme={toggleTheme} onSignUp={signUp} />} />
       <Route element={!sessionReady ? <SessionLoading /> : user ? <WorkspaceLayout theme={theme} onToggleTheme={toggleTheme} user={user} onSignOut={signOut} /> : <Navigate to="/login" replace />}>
         <Route path="chat" element={<ChatPage />} />
+        <Route path="tools" element={<AgentToolsPage />} />
         <Route path="dashboard" element={user?.role === "admin" ? <SecurityDashboardPage /> : <Navigate to="/chat" replace />} />
         <Route path="red-team" element={user?.role === "admin" ? <RedTeamPage /> : <Navigate to="/chat" replace />} />
       </Route>

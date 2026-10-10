@@ -1,6 +1,8 @@
+from collections import OrderedDict
 import logging
 import os
 import sys
+import threading
 import time
 import uuid
 from typing import Any, Optional
@@ -13,12 +15,15 @@ from dotenv import load_dotenv
 load_dotenv()
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend", ".env"))
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
-from guardrails_engine import GuardrailsEngine, LlamaGuardClassifier
+from guardrails_engine import GuardrailsEngine, LlamaGuardClassifier, Session, ToolCallGuard
+from hallucination import check_hallucination
+from prompts import CANARY, SYSTEM_PROMPT
+from tools import execute_tool
 
 from app import events
 from app.auth import (
@@ -49,10 +54,18 @@ if INFERENCE_MODE == "local":
 elif INFERENCE_MODE == "groq":
     from groq_llm import GroqLLM, GROQ_MODEL_ID as MODEL_ID
     llm = GroqLLM()
+elif INFERENCE_MODE == "mock":
+    class MockLLM:
+        model_id = "mock"
+        def generate(self, prompt: str, **kwargs) -> str:
+            return "This is a mock response from the gateway LLM."
+    llm = MockLLM()
+    MODEL_ID = "mock"
 else:
     raise ValueError(
-        f"Unknown INFERENCE_MODE='{INFERENCE_MODE}'. Use 'local' or 'groq'."
+        f"Unknown INFERENCE_MODE='{INFERENCE_MODE}'. Use 'local', 'groq', or 'mock'."
     )
+
 
 
 # Log detailed errors to the local terminal, not to API clients.
@@ -79,10 +92,21 @@ engine = GuardrailsEngine(
     GuardrailsEngine.default_guards(
         use_llama_guard=True,
         llama_guard_model_id=os.getenv("LLAMA_GUARD_MODEL_ID", "meta-llama/Llama-Guard-3-1B"),
+        canaries=[CANARY],
+        system_prompt=SYSTEM_PROMPT,
+    )
+)
+engine.add(
+    ToolCallGuard(
+        allowed_tools={"calculator", "fetch_url", "send_email"},
+        allowed_domains={"example.com", "api.example.com"},
+        max_calls_per_session=10,
     )
 )
 
 REFUSAL = "Sorry, I can't help with that request."
+
+from app.session_store import session_store
 
 app.add_middleware(
     CORSMiddleware,
@@ -110,22 +134,11 @@ def optional_user(credentials: HTTPAuthorizationCredentials | None = Depends(_be
         return None
 
 
-def check_admin(credentials: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> SessionUser:
-    if credentials is None:
-        return SessionUser(username="admin", role="admin")
-    try:
-        user = current_user(credentials)
-        if user.role != "admin":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator role required.")
-        return user
-    except HTTPException:
-        return SessionUser(username="admin", role="admin")
-
-
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10_000)
     conversation_id: str | None = None
     mode: str = "guarded"
+    context: list[str] | None = None
 
 
 class ChatResponse(BaseModel):
@@ -139,12 +152,34 @@ class ChatResponse(BaseModel):
     latency_ms: int
     mode: str
     mock_models: bool
+    dropped_context: list[str] = Field(default_factory=list)
+    low_confidence: bool = False
+    unsupported_claims: list[str] = Field(default_factory=list)
+    check_skipped: bool = False
     # Legacy gateway fields are retained for API consumers that predate the UI.
     response: str
     input_decision: str
     output_decision: str | None = None
     model: str
     inference: str
+
+
+class ToolRequest(BaseModel):
+    name: str
+    args: dict[str, Any] = Field(default_factory=dict)
+    conversation_id: str | None = None
+    approve: bool = False
+
+
+class ToolResponse(BaseModel):
+    request_id: str
+    name: str
+    status: str
+    decision: str
+    result: Any | None = None
+    reason: str | None = None
+    message: str | None = None
+    categories: list[str] = Field(default_factory=list)
 
 
 def _safety_classifier() -> LlamaGuardClassifier:
@@ -193,11 +228,11 @@ def root() -> dict[str, str]:
 def health() -> dict[str, Any]:
     """Report generation and mandatory safety readiness without exposing errors."""
     safety = _safety_classifier().readiness()
-    generation_loaded = INFERENCE_MODE == "groq" or getattr(llm, "model", None) is not None
+    generation_loaded = INFERENCE_MODE in ("groq", "mock") or getattr(llm, "model", None) is not None
     return {
         "status": "ok" if safety["ready"] else "degraded",
         "model_mode": INFERENCE_MODE,
-        "mock_models": False,
+        "mock_models": INFERENCE_MODE == "mock",
         "model": MODEL_ID,
         "inference": INFERENCE_MODE,
         "model_loaded": generation_loaded,
@@ -214,16 +249,59 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
     conversation_id = req.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
     username = user.username if user else "anonymous"
 
+    # Load prior conversation history and per-conversation session state
+    history = events.get_conversation_history(conversation_id, limit=20)
+    session = session_store.get(conversation_id)
+
     # Redact before persisting to chat history
     persisted_user_msg, _ = redact_sensitive(req.message)
     events.log_chat_message(rid, conversation_id, username, "user", persisted_user_msg)
 
+    # Validate context documents before they enter the prompt
+    valid_context: list[str] = []
+    dropped_context: list[str] = []
+    if req.context:
+        for doc in req.context:
+            c_res = engine.validate_context(doc, history=history, session=session)
+            if not c_res.allowed:
+                dropped_context.append(doc)
+                events.log_event(rid, "context", "unsafe", c_res.categories, "blocked_context", 0)
+                events.log_request(rid, "blocked", req.mode, 0)
+                session_store.save(conversation_id, session)
+                return ChatResponse(
+                    request_id=rid,
+                    conversation_id=conversation_id,
+                    status="blocked",
+                    answer=REFUSAL,
+                    input_check={"label": "unsafe", "categories": c_res.categories},
+                    output_check=None,
+                    action="blocked_context",
+                    latency_ms=int((time.perf_counter() - t0) * 1000),
+                    mode=req.mode,
+                    mock_models=False,
+                    dropped_context=dropped_context,
+                    response=REFUSAL,
+                    input_decision=c_res.decision,
+                    output_decision=None,
+                    model=getattr(llm, "model_id", MODEL_ID),
+                    inference=INFERENCE_MODE,
+                )
+            else:
+                valid_context.append(doc)
+
+    effective_message = req.message
+    if valid_context:
+        effective_message = "Context:\n" + "\n---\n".join(valid_context) + f"\n\nQuestion: {req.message}"
+
     try:
         response, input_result, output_result = engine.protect(
-            user_text=req.message,
+            user_text=effective_message,
             llm=llm.generate,
+            history=history,
+            session=session,
             refusal=REFUSAL,
         )
+        session_store.save(conversation_id, session)
         latency = int((time.perf_counter() - t0) * 1000)
         status_val, action = _result_status(input_result, output_result)
 
@@ -253,11 +331,12 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
             oc_latency = int(getattr(output_result, "latency_ms", 0))
             events.log_event(rid, "output", oc_label, oc_categories, oc_action, oc_latency)
 
-        # If model generated a response that was blocked by output guard, persist attempted output
+        # If model generated a response that was blocked by output guard, persist attempted output redacted
         if output_result is not None and not output_result.allowed:
             attempted_raw = getattr(output_result, "raw_text", "")
             if attempted_raw:
-                events.log_chat_message(rid, conversation_id, username, "attempted_output", attempted_raw)
+                persisted_attempted, _ = redact_sensitive(attempted_raw)
+                events.log_chat_message(rid, conversation_id, username, "attempted_output", persisted_attempted)
 
         # Log overall request
         events.log_request(rid, status_val, req.mode, latency)
@@ -265,6 +344,24 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
         # Persist assistant reply
         persisted_assistant_msg, _ = redact_sensitive(response)
         events.log_chat_message(rid, conversation_id, username, "assistant", persisted_assistant_msg)
+
+        low_confidence = False
+        unsupported_claims: list[str] = []
+        check_skipped = False
+        if status_val == "completed" and valid_context:
+            h_res = check_hallucination(
+                answer=response,
+                prompt=effective_message,
+                context=valid_context,
+                llm=llm.generate,
+            )
+            low_confidence = h_res.low_confidence
+            unsupported_claims = h_res.unsupported_claims
+            check_skipped = h_res.check_skipped
+            if not h_res.allowed:
+                status_val = "blocked"
+                action = "blocked_hallucination"
+                response = h_res.message or REFUSAL
 
         return ChatResponse(
             request_id=rid,
@@ -277,6 +374,10 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
             latency_ms=latency,
             mode=req.mode,
             mock_models=False,
+            dropped_context=dropped_context,
+            low_confidence=low_confidence,
+            unsupported_claims=unsupported_claims,
+            check_skipped=check_skipped,
             response=response,
             input_decision=input_result.decision,
             output_decision=output_result.decision if output_result is not None else None,
@@ -290,6 +391,64 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
         events.log_event(rid, "input", "error", ["system"], "error", latency)
         events.log_request(rid, "error", req.mode, latency)
         raise HTTPException(status_code=500, detail="The gateway could not process this request.") from None
+
+
+@app.post("/agent/tool", response_model=ToolResponse)
+def agent_tool(
+    req: ToolRequest,
+    user: SessionUser = Depends(current_user),
+) -> ToolResponse:
+    t0 = time.perf_counter()
+    rid = f"req_{uuid.uuid4().hex[:10]}"
+    cid = req.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
+    session = session_store.get(cid)
+
+    # 1. Require admin approval for send_email
+    if req.name == "send_email":
+        if not (user.role == "admin" and req.approve is True):
+            latency = int((time.perf_counter() - t0) * 1000)
+            events.log_event(rid, "tool", "review", ["approval_required"], "review_required", latency)
+            return ToolResponse(
+                request_id=rid,
+                name=req.name,
+                status="review_required",
+                decision="REVIEW",
+                reason="approval_required",
+                message="send_email requires explicit admin approval (approve=true)",
+                categories=["approval_required"],
+            )
+
+    # 2. Validate tool call through engine
+    result = engine.validate_tool_call(req.name, req.args, session=session)
+    session_store.save(cid, session)
+    latency = int((time.perf_counter() - t0) * 1000)
+
+    label = "safe" if result.allowed else ("error" if "system" in result.categories else "unsafe")
+    action = "passed" if result.allowed else ("error" if label == "error" else "blocked_tool")
+    events.log_event(rid, "tool", label, result.categories, action, latency)
+
+    if not result.allowed:
+        return ToolResponse(
+            request_id=rid,
+            name=req.name,
+            status="blocked",
+            decision=result.decision,
+            reason=result.reason,
+            message=result.message or f"Tool call blocked: {result.reason}",
+            categories=result.categories,
+        )
+
+    # 3. ONLY execute if decision is ALLOW
+    tool_output = execute_tool(req.name, req.args)
+    return ToolResponse(
+        request_id=rid,
+        name=req.name,
+        status="executed",
+        decision=result.decision,
+        result=tool_output,
+        reason=result.reason,
+        categories=result.categories,
+    )
 
 
 @app.get("/chat/history", response_model=ChatHistoryPage)
@@ -319,7 +478,7 @@ def me(user: SessionUser = Depends(current_user)) -> SessionUser:
 
 # ── Security Monitor telemetry endpoints ─────────────────────
 @app.get("/security/metrics", response_model=Metrics)
-def metrics(_admin: SessionUser = Depends(check_admin)) -> dict:
+def metrics(_admin: SessionUser = Depends(require_admin)) -> dict:
     return events.metrics()
 
 
@@ -331,23 +490,44 @@ def get_security_events(
     action: Optional[str] = None,
     since: Optional[str] = None,
     until: Optional[str] = None,
-    _admin: SessionUser = Depends(check_admin),
+    _admin: SessionUser = Depends(require_admin),
 ) -> dict:
     items, total = events.list_events(limit, offset, stage, action, since, until)
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
+@app.get("/security/audit/verify")
+def get_security_audit_verify(
+    _admin: SessionUser = Depends(require_admin),
+) -> dict:
+    return events.verify_audit_chain()
+
+
+@app.get("/security/events/export")
+def export_security_events(
+    format: str = Query("json", pattern="^(csv|json)$"),
+    _admin: SessionUser = Depends(require_admin),
+) -> Response:
+    content, media_type = events.export_events(format)
+    ext = "csv" if format == "csv" else "json"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="security_events.{ext}"'},
+    )
+
+
 @app.get("/security/events/{request_id}")
 def get_security_event_details(
     request_id: str,
-    _admin: SessionUser = Depends(check_admin),
+    _admin: SessionUser = Depends(require_admin),
 ) -> dict[str, Any]:
     return events.get_request_chat_details(request_id)
 
 
 
 @app.get("/security/diagnostics")
-def diagnostics(_admin: SessionUser = Depends(check_admin)) -> dict[str, Any]:
+def diagnostics(_admin: SessionUser = Depends(require_admin)) -> dict[str, Any]:
     try:
         import torch
         cuda_avail = torch.cuda.is_available()
@@ -444,5 +624,5 @@ def diagnostics(_admin: SessionUser = Depends(check_admin)) -> dict[str, Any]:
 
 
 @app.get("/redteam/prompts")
-def redteam(_admin: SessionUser = Depends(check_admin)) -> dict:
+def redteam(_admin: SessionUser = Depends(require_admin)) -> dict:
     return {"items": REDTEAM_PROMPTS}

@@ -1,4 +1,4 @@
-import type { ChatResponse, EventsPage, Health, LoginResponse, Metrics, Mode, ModelDiagnostics, RedTeamPrompt, RequestDetails, SessionUser } from "../types/api";
+import type { ChatResponse, EventsPage, Health, LoginResponse, Metrics, Mode, ModelDiagnostics, RedTeamPrompt, RequestDetails, SessionUser, ToolRequest, ToolResponse } from "../types/api";
 
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 const SESSION_KEY = "secure-ai-access-token";
@@ -80,16 +80,22 @@ export const api = {
     return result.user;
   },
   me: () => request<SessionUser>("/auth/me", undefined, 8000),
-  async chat(message: string, conversationId: string | null, mode: Mode = "guarded", modelId?: string): Promise<ChatResponse> {
+  async chat(message: string, conversationId: string | null, mode: Mode = "guarded", modelId?: string, context?: string[]): Promise<ChatResponse> {
     const r = await request<ChatResponse>("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-      body: JSON.stringify({ message, conversation_id: conversationId, mode, model_id: modelId }),
+      body: JSON.stringify({ message, conversation_id: conversationId, mode, model_id: modelId, context: context && context.length ? context : undefined }),
     }, 600000);
     if (!r || typeof r.answer !== "string" || !VALID_STATUS.includes(r.status))
       throw new ApiError("The server sent a response the app doesn't understand.");
     return r;
   },
+  executeTool: (req: ToolRequest) =>
+    request<ToolResponse>("/agent/tool", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    }, 15000),
   history: (conversationId?: string | null) => {
     const q = conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : "";
     return request<{ items: Array<{ message_id: string; request_id: string; conversation_id: string; role: "user" | "assistant"; content: string; created_at: string }> }>(`/chat/history${q}`, undefined, 10000);

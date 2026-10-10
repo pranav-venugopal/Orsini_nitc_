@@ -86,8 +86,19 @@ def init_event_schema() -> None:
                     label TEXT NOT NULL,
                     categories TEXT NOT NULL,
                     action TEXT NOT NULL,
-                    latency_ms INTEGER NOT NULL
+                    latency_ms INTEGER NOT NULL,
+                    prev_hash TEXT,
+                    hash TEXT
                 )""")
+                execute(cursor, """DO $$
+                BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'events' AND column_name = 'prev_hash') THEN
+                        ALTER TABLE events ADD COLUMN prev_hash TEXT;
+                    END IF;
+                    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'events' AND column_name = 'hash') THEN
+                        ALTER TABLE events ADD COLUMN hash TEXT;
+                    END IF;
+                END $$;""")
                 execute(cursor, """CREATE TABLE IF NOT EXISTS evaluations (
                     id BIGSERIAL PRIMARY KEY,
                     evaluated_at TIMESTAMPTZ NOT NULL,
@@ -115,7 +126,8 @@ def init_event_schema() -> None:
               mode TEXT, latency_ms INTEGER);
             CREATE TABLE IF NOT EXISTS events(
               event_id TEXT PRIMARY KEY, timestamp TEXT, request_id TEXT,
-              stage TEXT, label TEXT, categories TEXT, action TEXT, latency_ms INTEGER);
+              stage TEXT, label TEXT, categories TEXT, action TEXT, latency_ms INTEGER,
+              prev_hash TEXT, hash TEXT);
             CREATE TABLE IF NOT EXISTS evaluations(
               evaluated_at TEXT NOT NULL, summary TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS chat_messages(
@@ -125,3 +137,8 @@ def init_event_schema() -> None:
             CREATE INDEX IF NOT EXISTS ix_chat_messages_conversation ON chat_messages(username, conversation_id, created_at);
             """
         )
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(events)").fetchall()]
+        if "prev_hash" not in cols:
+            conn.execute("ALTER TABLE events ADD COLUMN prev_hash TEXT")
+        if "hash" not in cols:
+            conn.execute("ALTER TABLE events ADD COLUMN hash TEXT")

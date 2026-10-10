@@ -1,8 +1,8 @@
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-Label = Literal["safe", "unsafe", "error"]
+Label = Literal["safe", "unsafe", "error", "review"]
 Status = Literal["completed", "blocked", "review_required", "error"]
 Mode = Literal["guarded", "baseline"]
 
@@ -17,6 +17,7 @@ class ChatRequest(BaseModel):
     conversation_id: Optional[str] = None
     mode: Mode = "guarded"
     model_id: Optional[str] = None
+    context: Optional[list[str]] = None
 
 
 class ChatResponse(BaseModel):
@@ -30,13 +31,35 @@ class ChatResponse(BaseModel):
     latency_ms: int
     mode: Mode
     mock_models: bool  # True while stand-in models are active
+    dropped_context: list[str] = Field(default_factory=list)
+    low_confidence: bool = False
+    unsupported_claims: list[str] = Field(default_factory=list)
+    check_skipped: bool = False
+
+
+class ToolRequest(BaseModel):
+    name: str
+    args: dict[str, Any] = Field(default_factory=dict)
+    conversation_id: Optional[str] = None
+    approve: bool = False
+
+
+class ToolResponse(BaseModel):
+    request_id: str
+    name: str
+    status: str
+    decision: str
+    result: Optional[Any] = None
+    reason: Optional[str] = None
+    message: Optional[str] = None
+    categories: list[str] = Field(default_factory=list)
 
 
 class SecurityEvent(BaseModel):
     event_id: str
     timestamp: str
     request_id: str
-    stage: Literal["input", "output"]
+    stage: Literal["input", "output", "tool", "context"]
     label: Label
     categories: list[str]
     action: str
@@ -44,6 +67,8 @@ class SecurityEvent(BaseModel):
     user_prompt: Optional[str] = None
     attempted_output: Optional[str] = None
     final_output: Optional[str] = None
+    prev_hash: Optional[str] = None
+    hash: Optional[str] = None
 
 
 class EventsPage(BaseModel):

@@ -17,6 +17,15 @@ export default function ChatMessage({ m }: { m: Msg }) {
           </p>
         )}
         {r?.action === "redacted" && <p className="mb-1 text-xs font-semibold text-status-warn">Sensitive output redacted by gateway</p>}
+        {r?.low_confidence && (
+          <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300">
+            <span className="size-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span>Low confidence</span>
+            {r.unsupported_claims && r.unsupported_claims.length > 0 && (
+              <span className="text-[10px] text-amber-300/80">({r.unsupported_claims.length} unverified)</span>
+            )}
+          </div>
+        )}
         {m.clientError && <p className="mb-1 text-xs font-semibold text-status-error">Request failed</p>}
         {/* Plain text only: React escapes it, nothing is rendered as HTML. */}
         <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{m.text}</p>

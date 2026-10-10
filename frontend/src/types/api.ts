@@ -1,5 +1,5 @@
 // Mirrors backend/app/schemas.py. Keep in sync with the backend owner.
-export type Label = "safe" | "unsafe" | "error";
+export type Label = "safe" | "unsafe" | "error" | "review";
 export type Status = "completed" | "blocked" | "review_required" | "error";
 export type Mode = "guarded" | "baseline";
 export type UserRole = "admin" | "member";
@@ -19,13 +19,35 @@ export interface ChatResponse {
   latency_ms: number;
   mode: Mode;
   mock_models: boolean;
+  dropped_context?: string[];
+  low_confidence?: boolean;
+  unsupported_claims?: string[];
+  check_skipped?: boolean;
+}
+
+export interface ToolRequest {
+  name: string;
+  args?: Record<string, any>;
+  conversation_id?: string | null;
+  approve?: boolean;
+}
+
+export interface ToolResponse {
+  request_id: string;
+  name: string;
+  status: "executed" | "blocked" | "review_required" | "error";
+  decision: string;
+  result?: any;
+  reason?: string | null;
+  message?: string | null;
+  categories: string[];
 }
 
 export interface SecurityEvent {
   event_id: string;
   timestamp: string;
   request_id: string;
-  stage: "input" | "output";
+  stage: "input" | "output" | "tool" | "context";
   label: Label;
   categories: string[];
   action: string;
@@ -33,6 +55,8 @@ export interface SecurityEvent {
   user_prompt?: string | null;
   attempted_output?: string | null;
   final_output?: string | null;
+  prev_hash?: string | null;
+  hash?: string | null;
 }
 export interface EventsPage { items: SecurityEvent[]; total: number; limit: number; offset: number }
 

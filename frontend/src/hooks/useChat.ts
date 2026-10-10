@@ -99,7 +99,7 @@ export function useChat() {
     };
   }, []);
 
-  const send = useCallback(async (text: string, modelId?: string) => {
+  const send = useCallback(async (text: string, modelId?: string, context?: string[]) => {
     const trimmed = text.trim();
     if (!trimmed || cachedLoading) return;
 
@@ -109,7 +109,7 @@ export function useChat() {
     notify();
 
     try {
-      const r = await api.chat(trimmed, cachedConvId, "guarded", modelId);
+      const r = await api.chat(trimmed, cachedConvId, "guarded", modelId, context);
       if (r.conversation_id) {
         cachedConvId = r.conversation_id;
       }
