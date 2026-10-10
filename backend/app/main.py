@@ -19,7 +19,7 @@ from . import events
 from .auth import LoginRequest, LoginResponse, RegisterRequest, SessionUser, current_user, init_auth_db, login, register, require_admin
 from .config import settings
 from .middleware import RequestLimitsMiddleware
-from .pipeline import MOCK, model_diagnostics, run_chat, run_tool
+from .pipeline import MOCK, model_diagnostics, run_chat, run_tool, set_model_mode
 from .schemas import ChatHistoryPage, ChatRequest, ChatResponse, EventsPage, Metrics, ToolRequest, ToolResponse
 
 app = FastAPI(title="Secure AI Assistant API")
@@ -56,6 +56,17 @@ def auth_register(req: RegisterRequest):
 @app.get("/auth/me", response_model=SessionUser)
 def auth_me(user: SessionUser = Depends(current_user)):
     return user
+
+
+class ConfigModeRequest(BaseModel):
+    mode: str = Field(pattern="^(mock|local|groq)$")
+
+@app.post("/config/mode")
+def update_config_mode(req: ConfigModeRequest, user: SessionUser = Depends(require_admin)):
+    global MOCK
+    set_model_mode(req.mode)
+    MOCK = (req.mode == "mock")
+    return {"status": "ok", "mode": req.mode}
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -128,7 +139,7 @@ def redteam_prompts(_admin: SessionUser = Depends(require_admin)):
 class RedteamLoopRequest(BaseModel):
     rounds: int = Field(5, ge=1, le=10)
     attacks_per_round: int = Field(8, ge=2, le=20)
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "openai/gpt-oss-20b"
     reset_rules: bool = True
 
 

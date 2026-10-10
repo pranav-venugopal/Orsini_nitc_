@@ -115,7 +115,7 @@ export default function ChatComposer({
               submit();
             }
           }}
-          placeholder={contextDoc.trim() ? "Ask a question about the attached document..." : "Message Aegis AI..."}
+          placeholder={contextDoc.trim() ? "Ask a question about the attached document..." : "Message Ultron AI..."}
           className="max-h-40 min-h-[44px] flex-1 resize-none bg-transparent px-2 py-2.5 text-sm text-text placeholder:text-mute disabled:opacity-60"
         />
 

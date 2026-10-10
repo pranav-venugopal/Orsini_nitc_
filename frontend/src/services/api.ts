@@ -2,8 +2,8 @@ import type { ChatResponse, EventsPage, Health, LoginResponse, MetamorphicPrevie
 
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 const SESSION_KEY = "secure-ai-access-token";
-export const CHAT_STORAGE_KEY = "aegis-chat-messages";
-export const CONV_STORAGE_KEY = "aegis-chat-conversation-id";
+export const CHAT_STORAGE_KEY = "ultron-chat-messages";
+export const CONV_STORAGE_KEY = "ultron-chat-conversation-id";
 
 export class ApiError extends Error {
   constructor(message: string, readonly field?: string) {
@@ -61,6 +61,25 @@ const VALID_STATUS = ["completed", "blocked", "review_required", "error"];
 
 export const api = {
   health: () => request<Health>("/health", undefined, 8000),
+  configMode: async (mode: string) => {
+    // Need custom fetches since we need to hit two different ports
+    const token = typeof window !== "undefined" ? window.sessionStorage.getItem(SESSION_KEY) : null;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    
+    // Hit backend
+    await fetch("http://localhost:8000/config/mode", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ mode }),
+    });
+    // Hit gateway
+    await fetch("http://localhost:8001/config/mode", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ mode }),
+    });
+  },
   async login(username: string, password: string): Promise<SessionUser> {
     const result = await request<LoginResponse>("/auth/login", {
       method: "POST",
@@ -111,7 +130,7 @@ export const api = {
   eventDetails: (requestId: string) => request<RequestDetails>(`/security/events/${encodeURIComponent(requestId)}`, undefined, 10000),
   redteamPrompts: () => request<{ items: RedTeamPrompt[] }>("/redteam/prompts", undefined, 10000),
   redteamLoop: () => request<RedteamLoopResult>("/redteam/loop", undefined, 60000),
-  runRedteamLoop: (rounds = 5, attacksPerRound = 8, groqModel = "llama-3.3-70b-versatile", resetRules = true) =>
+  runRedteamLoop: (rounds = 5, attacksPerRound = 8, groqModel = "openai/gpt-oss-20b", resetRules = true) =>
     request<RedteamLoopResult>("/redteam/loop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

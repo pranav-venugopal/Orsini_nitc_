@@ -32,10 +32,29 @@ function WorkspaceLayout({ theme, onToggleTheme, user, onSignOut }: {
   onSignOut: () => void;
 }) {
   const [mock, setMock] = useState(false);
+  const [modelMode, setModelMode] = useState<string>("groq");
   const scrollWrapper = useRef<HTMLDivElement>(null);
   const scrollContent = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { api.health().then((health) => setMock(health.mock_models)).catch(() => {}); }, []);
+  useEffect(() => { 
+    api.health().then((health) => {
+      setMock(health.mock_models);
+      setModelMode(health.model_mode);
+    }).catch(() => {}); 
+  }, []);
+  
+  const handleToggleMode = async () => {
+    if (user.role !== "admin") return;
+    const newMode = modelMode === "local" ? "groq" : "local";
+    try {
+      await api.configMode(newMode);
+      setModelMode(newMode);
+      setMock(newMode === "mock");
+    } catch (e) {
+      console.error("Failed to change mode", e);
+    }
+  };
+  
   useEffect(() => {
     const wrapper = scrollWrapper.current;
     const content = scrollContent.current;
@@ -46,7 +65,7 @@ function WorkspaceLayout({ theme, onToggleTheme, user, onSignOut }: {
 
   return (
     <div className="relative z-10 flex h-screen flex-col overflow-hidden">
-      <WorkspaceNav theme={theme} role={user.role} username={user.username} onToggleTheme={onToggleTheme} onSignOut={onSignOut} />
+      <WorkspaceNav theme={theme} role={user.role} username={user.username} onToggleTheme={onToggleTheme} onSignOut={onSignOut} modelMode={modelMode} onToggleModelMode={handleToggleMode} />
       {mock && <p role="note" className="model-banner flex items-center justify-center gap-2 border-b border-edge px-4 py-2 text-center text-xs backdrop-blur"><span className="size-1.5 shrink-0 rounded-full bg-cyan-600" /> Stand-in models are active. Answers and safety labels are placeholders until Qwen and Llama Guard are connected.</p>}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div ref={scrollWrapper} className="min-h-0 flex-1 overflow-y-auto">

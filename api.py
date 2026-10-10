@@ -245,6 +245,34 @@ def health() -> dict[str, Any]:
     }
 
 
+class ConfigModeRequest(BaseModel):
+    mode: str = Field(pattern="^(mock|local|groq)$")
+
+@app.post("/config/mode")
+def update_config_mode(req: ConfigModeRequest, user: SessionUser | None = Depends(optional_user)):
+    global INFERENCE_MODE, llm, MODEL_ID
+    if user is None or user.role != "admin":
+        raise HTTPException(403, "Admin privileges required.")
+    
+    INFERENCE_MODE = req.mode
+    if INFERENCE_MODE == "local":
+        from main import MainLLM, MODEL_ID as M_ID
+        llm = MainLLM()
+        MODEL_ID = M_ID
+    elif INFERENCE_MODE == "groq":
+        from groq_llm import GroqLLM, GROQ_MODEL_ID
+        llm = GroqLLM()
+        MODEL_ID = GROQ_MODEL_ID
+    elif INFERENCE_MODE == "mock":
+        class MockLLM:
+            model_id = "mock"
+            def generate(self, prompt: str, **kwargs) -> str:
+                return "This is a mock response from the gateway LLM."
+        llm = MockLLM()
+        MODEL_ID = "mock"
+    return {"status": "ok", "mode": INFERENCE_MODE}
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) -> ChatResponse:
     t0 = time.perf_counter()

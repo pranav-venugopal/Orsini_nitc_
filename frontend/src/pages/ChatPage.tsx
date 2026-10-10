@@ -28,7 +28,7 @@ export default function ChatPage() {
             {isAdmin ? "Admin Security Workspace" : "Workspace"}
           </p>
           <div className="flex items-center gap-3">
-            <h1 className="font-display text-xl font-medium tracking-tight text-text sm:text-2xl">Aegis assistant</h1>
+            <h1 className="font-display text-xl font-medium tracking-tight text-text sm:text-2xl">Ultron assistant</h1>
             {isAdmin && (
               <select
                 value={modelId}

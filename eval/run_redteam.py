@@ -238,7 +238,7 @@ def generate_attacker_prompts(round_num: int, previous_bypasses: list[str], groq
     return base_prompts[:count]
 
 
-def run_attacker_loop(num_rounds: int = 4, attacks_per_round: int = 8, groq_model: str = "llama-3.3-70b-versatile", reset_rules: bool = True) -> dict:
+def run_attacker_loop(num_rounds: int = 4, attacks_per_round: int = 8, groq_model: str = "openai/gpt-oss-20b", reset_rules: bool = True) -> dict:
     """Run iterative Attacker LLM in a loop.
     
     In each round:

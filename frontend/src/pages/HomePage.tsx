@@ -87,7 +87,7 @@ export default function HomePage({ theme, onToggleTheme }: { theme: Theme; onTog
             ))}
           </div>
         </section>
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-edge/45 py-5 text-[10px] uppercase tracking-[0.08em] text-mute"><span>Aegis AI / Private gateway</span><span>Safe systems are measured, not assumed.</span></footer>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-edge/45 py-5 text-[10px] uppercase tracking-[0.08em] text-mute"><span>Ultron AI / Private gateway</span><span>Safe systems are measured, not assumed.</span></footer>
       </main>
     </div>
   );

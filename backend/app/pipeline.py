@@ -41,6 +41,11 @@ def _build():
 
 guard, generator, MOCK = _build()
 
+def set_model_mode(mode: str):
+    global guard, generator, MOCK
+    settings.model_mode = mode
+    guard, generator, MOCK = _build()
+
 # Unified GuardrailsEngine instance
 engine = GuardrailsEngine(
     GuardrailsEngine.default_guards(

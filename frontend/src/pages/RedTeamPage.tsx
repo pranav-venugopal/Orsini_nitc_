@@ -38,7 +38,7 @@ export default function RedTeamPage() {
   const [loopError, setLoopError] = useState<string | null>(null);
   const [roundsCount, setRoundsCount] = useState(5);
   const [attacksCount, setAttacksCount] = useState(8);
-  const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
+  const [selectedModel, setSelectedModel] = useState("openai/gpt-oss-20b");
 
   useEffect(() => {
     // Load fixed prompts
@@ -270,8 +270,8 @@ export default function RedTeamPage() {
                     disabled={loopLoading}
                     className="bg-transparent font-medium text-text outline-none cursor-pointer"
                   >
-                    <option value="llama-3.3-70b-versatile">Llama 3.3 70B (Groq)</option>
-                    <option value="llama-3.1-8b-instant">Llama 3.1 8B (Groq)</option>
+                    <option value="openai/gpt-oss-20b">GPT OSS 20B (OpenAI)</option>
+                    <option value="openai/gpt-oss-120b">GPT OSS 120B (OpenAI)</option>
                   </select>
                 </div>
 
