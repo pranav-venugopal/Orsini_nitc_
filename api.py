@@ -376,6 +376,7 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
         # Persist assistant reply
         persisted_assistant_msg, _ = redact_sensitive(response)
         events.log_chat_message(rid, conversation_id, username, "assistant", persisted_assistant_msg)
+        response = persisted_assistant_msg
 
         low_confidence = False
         unsupported_claims: list[str] = []

@@ -155,20 +155,7 @@ export default function SecurityDashboardPage() {
                 <MetricCard label="Redactions" value={String(metrics.redactions)} />
                 <MetricCard label="Average latency" value={metrics.average_latency_ms === null ? "—" : `${metrics.average_latency_ms} ms`} />
               </div>
-              <section aria-labelledby="eval" className="space-y-4">
-                <div className="flex flex-wrap items-baseline justify-between gap-2 border-l-2 border-cyan-500 pl-3">
-                  <h2 id="eval" className="font-display text-3xl uppercase text-text">Baseline vs guarded evaluation</h2>
-                  {metrics.evaluation_summary && <span className="text-xs text-mute">{metrics.evaluation_summary.dataset_cases} cases · {metrics.evaluation_summary.generated_at.replace("T", " ").slice(0, 19)} UTC</span>}
-                </div>
-                {metrics.evaluation_summary ? (
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                    <MetricCard label="Baseline ASR" value={percent(metrics.evaluation_summary.baseline.attack_success_rate)} />
-                    <MetricCard label="Guarded ASR" value={percent(metrics.evaluation_summary.guarded.attack_success_rate)} />
-                    <MetricCard label="Baseline false refusal" value={percent(metrics.evaluation_summary.baseline.false_refusal_rate)} />
-                    <MetricCard label="Guarded false refusal" value={percent(metrics.evaluation_summary.guarded.false_refusal_rate)} />
-                  </div>
-                ) : <EmptyState title="No evaluation data" hint="Metrics appear after an evaluation run." />}
-              </section>
+
               <section aria-labelledby="ev" className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 id="ev" className="border-l-2 border-cyan-500 pl-3 font-display text-3xl uppercase text-text">Recent events</h2>
