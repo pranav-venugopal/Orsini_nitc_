@@ -4,10 +4,13 @@ import time
 import uuid
 from typing import Any
 
+from guardrails_engine import GuardrailsEngine
+from prompts import CANARY, SYSTEM_PROMPT
 from . import events
 from .config import settings
 from .redaction import redact_sensitive
 from .schemas import Check, ChatRequest, ChatResponse
+from .session_store import session_store
 
 REFUSAL = "I can't help with that request."
 BLOCKED_OUTPUT = "The generated answer was withheld by the safety check."
@@ -30,6 +33,15 @@ def _build():
 
 
 guard, generator, MOCK = _build()
+
+# Unified GuardrailsEngine instance
+engine = GuardrailsEngine(
+    GuardrailsEngine.default_guards(
+        use_llama_guard=False,  # Offline/mock default; guard.classify provides the model-based check
+        canaries=[CANARY],
+        system_prompt=SYSTEM_PROMPT,
+    )
+)
 
 
 def model_diagnostics() -> dict[str, Any]:
@@ -86,6 +98,11 @@ def run_chat(req: ChatRequest, username: str) -> ChatResponse:
     rid = f"req_{uuid.uuid4().hex[:10]}"
     conversation_id = req.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
     t0 = time.perf_counter()
+
+    # Load recent conversation history and session
+    history = events.get_conversation_history(conversation_id, limit=20)
+    session = session_store.get(conversation_id)
+
     persisted_message, _ = redact_sensitive(req.message)
     events.log_chat_message(rid, conversation_id, username, "user", persisted_message)
 
@@ -109,41 +126,71 @@ def run_chat(req: ChatRequest, username: str) -> ChatResponse:
             return done("error", ERROR_MSG, "error")
 
     t = time.perf_counter()
+
+    # 1. Input stage: Run GuardrailsEngine input validation (de-obfuscation, injection, PII, etc.)
+    r_in = engine.validate_input(req.message, history=history, session=session)
+    if not r_in.allowed:
+        session_store.save(conversation_id, session)
+        is_error = "system" in r_in.categories
+        ic_label = "error" if is_error else "unsafe"
+        action = "error" if is_error else "blocked_input"
+        status_val = "error" if is_error else "blocked"
+        events.log_event(rid, "input", ic_label, r_in.categories, action, ms(t))
+        return done(status_val,
+                    ERROR_MSG if is_error else (r_in.message or REFUSAL), action,
+                    ic=Check(label=ic_label, categories=r_in.categories))
+
+    # Pattern / PII sanitization and model guard check
     sanitized_message, input_sensitive_categories = redact_sensitive(req.message)
     ic = _check(sanitized_message, "user")
     if ic.label != "safe":
+        session_store.save(conversation_id, session)
         action = "error" if ic.label == "error" else "blocked_input"
         events.log_event(rid, "input", ic.label, ic.categories, action, ms(t))
         return done("error" if ic.label == "error" else "blocked",
                     ERROR_MSG if ic.label == "error" else REFUSAL, action, ic=ic)
+
     if input_sensitive_categories:
         input_sensitive_categories = sorted(input_sensitive_categories)
         ic = Check(label="safe", categories=input_sensitive_categories)
         events.log_event(rid, "input", "safe", input_sensitive_categories, "redacted", ms(t))
     else:
+        ic = Check(label="safe", categories=[])
         events.log_event(rid, "input", "safe", [], "passed", ms(t))
 
     try:
         answer = _generate(sanitized_message, req.model_id)
     except Exception:
         logger.exception("Guarded model generation failed")
+        session_store.save(conversation_id, session)
         return done("error", ERROR_MSG, "error", ic=ic)
 
     t = time.perf_counter()
+
+    # 2. Output stage: Run GuardrailsEngine output validation (LeakGuard, PIIGuard, etc.)
+    r_out = engine.validate_output(answer, history=(history or []) + [{"role": "user", "content": sanitized_message}], session=session)
+
     sanitized_answer, sensitive_categories = redact_sensitive(answer)
     oc = _check(sanitized_answer, "assistant", context=sanitized_message)
-    if oc.label != "safe":
-        action = "error" if oc.label == "error" else "blocked_output"
-        categories = sorted(set(oc.categories + sensitive_categories))
-        events.log_event(rid, "output", oc.label, categories, action, ms(t))
+
+    session_store.save(conversation_id, session)
+
+    if (not r_out.allowed) or (oc.label != "safe"):
+        is_error = (oc.label == "error") or ("system" in r_out.categories)
+        oc_label = "error" if is_error else "unsafe"
+        action = "error" if is_error else "blocked_output"
+        status_val = "error" if is_error else "blocked"
+        categories = sorted(set(oc.categories + (r_out.categories if r_out else []) + sensitive_categories))
+        events.log_event(rid, "output", oc_label, categories, action, ms(t))
         events.log_chat_message(rid, conversation_id, username, "attempted_output", sanitized_answer)
-        # TODO(model owner): optional "safe retry" (regenerate with a stricter prompt) before blocking.
-        return done("error" if oc.label == "error" else "blocked",
-                    ERROR_MSG if oc.label == "error" else BLOCKED_OUTPUT, action, ic=ic,
-                    oc=Check(label=oc.label, categories=categories))
+        return done(status_val,
+                    ERROR_MSG if is_error else BLOCKED_OUTPUT, action, ic=ic,
+                    oc=Check(label=oc_label, categories=categories))
+
     if sensitive_categories:
-        oc = Check(label="unsafe", categories=sensitive_categories)
-        events.log_event(rid, "output", "unsafe", sensitive_categories, "redacted", ms(t))
+        oc = Check(label="unsafe", categories=sorted(sensitive_categories))
+        events.log_event(rid, "output", "unsafe", sorted(sensitive_categories), "redacted", ms(t))
         return done("completed", sanitized_answer, "redacted", ic=ic, oc=oc)
+
     events.log_event(rid, "output", "safe", [], "passed", ms(t))
     return done("completed", sanitized_answer, "returned", ic=ic, oc=oc)
