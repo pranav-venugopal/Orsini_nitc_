@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       MODEL_MODE: mock
-      INFERENCE_MODE: mock
+      INFERENCE_MODE: local
       HALLUCINATION_CHECK: on
       ENABLE_SEMANTIC: false
     steps:

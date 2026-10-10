@@ -54,10 +54,18 @@ if INFERENCE_MODE == "local":
 elif INFERENCE_MODE == "groq":
     from groq_llm import GroqLLM, GROQ_MODEL_ID as MODEL_ID
     llm = GroqLLM()
+elif INFERENCE_MODE == "mock":
+    class MockLLM:
+        model_id = "mock"
+        def generate(self, prompt: str, **kwargs) -> str:
+            return "This is a mock response from the gateway LLM."
+    llm = MockLLM()
+    MODEL_ID = "mock"
 else:
     raise ValueError(
-        f"Unknown INFERENCE_MODE='{INFERENCE_MODE}'. Use 'local' or 'groq'."
+        f"Unknown INFERENCE_MODE='{INFERENCE_MODE}'. Use 'local', 'groq', or 'mock'."
     )
+
 
 
 # Log detailed errors to the local terminal, not to API clients.
@@ -220,11 +228,11 @@ def root() -> dict[str, str]:
 def health() -> dict[str, Any]:
     """Report generation and mandatory safety readiness without exposing errors."""
     safety = _safety_classifier().readiness()
-    generation_loaded = INFERENCE_MODE == "groq" or getattr(llm, "model", None) is not None
+    generation_loaded = INFERENCE_MODE in ("groq", "mock") or getattr(llm, "model", None) is not None
     return {
         "status": "ok" if safety["ready"] else "degraded",
         "model_mode": INFERENCE_MODE,
-        "mock_models": False,
+        "mock_models": INFERENCE_MODE == "mock",
         "model": MODEL_ID,
         "inference": INFERENCE_MODE,
         "model_loaded": generation_loaded,
