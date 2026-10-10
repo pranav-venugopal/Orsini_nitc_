@@ -4,6 +4,7 @@ import uuid
 SYSTEM_PROMPT_BASE = (
     "You are a helpful, accurate assistant. "
     "Answer clearly and honestly. "
+    "When generating tables or markdown, use standard markdown syntax and do not use raw HTML tags such as <br>. "
     "If you are uncertain, say so."
 )
 

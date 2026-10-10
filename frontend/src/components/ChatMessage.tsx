@@ -1,5 +1,7 @@
 import type { Msg } from "../hooks/useChat";
 import { ShieldCheck } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import SecurityDetails from "./SecurityDetails";
 import SecurityStatus from "./SecurityStatus";
 
@@ -7,6 +9,8 @@ export default function ChatMessage({ m, isAdmin = false }: { m: Msg; isAdmin?: 
   const user = m.role === "user";
   const r = m.response;
   const tone = user ? "bg-brand text-white ring-cyan-700 shadow-[0_12px_28px_rgba(8,39,58,0.14)]" : m.clientError || r?.status === "error" ? "surface-glass text-text ring-rose-300" : r?.status === "blocked" || r?.action === "redacted" ? "surface-glass text-text ring-amber-300" : "surface-glass text-text ring-edge shadow-[0_12px_28px_rgba(27,77,92,0.08)]";
+  const content = m.text.replace(/<br\s*\/?>/gi, "\n");
+
   return (
     <div className={`flex items-end gap-3 ${user ? "justify-end" : "justify-start"}`}>
       {!user && <div className="brand-mark mb-1 hidden size-8 shrink-0 place-items-center rounded-xl sm:grid"><ShieldCheck size={16} /></div>}
@@ -27,8 +31,24 @@ export default function ChatMessage({ m, isAdmin = false }: { m: Msg; isAdmin?: 
           </div>
         )}
         {m.clientError && <p className="mb-1 text-xs font-semibold text-status-error">Request failed</p>}
-        {/* Plain text only: React escapes it, nothing is rendered as HTML. */}
-        <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{m.text}</p>
+        {user ? (
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{m.text}</p>
+        ) : (
+          <div className="md break-words">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                table: ({ node, ...props }) => (
+                  <div className="my-2 overflow-x-auto">
+                    <table {...props} />
+                  </div>
+                ),
+              }}
+            >
+              {content}
+            </ReactMarkdown>
+          </div>
+        )}
         {r && isAdmin && (
           <div className="mt-3 space-y-1">
             <SecurityStatus r={r} />
