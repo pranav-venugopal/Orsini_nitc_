@@ -279,7 +279,7 @@ def test_chat_history_is_persisted_per_user_with_redacted_content():
 def test_events_normalize_legacy_category_strings():
     with sqlite3.connect(settings.db_path) as connection:
         connection.execute(
-            "INSERT INTO events VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO events (event_id, timestamp, request_id, stage, label, categories, action, latency_ms) VALUES (?,?,?,?,?,?,?,?)",
             ("evt_legacy", "2026-01-01T00:00:00+00:00", "req_legacy", "input", "unsafe", '"violence"', "blocked_input", 1),
         )
     response = c.get("/security/events?stage=input&limit=100", headers=headers())

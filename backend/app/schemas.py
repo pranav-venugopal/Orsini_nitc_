@@ -67,6 +67,8 @@ class SecurityEvent(BaseModel):
     user_prompt: Optional[str] = None
     attempted_output: Optional[str] = None
     final_output: Optional[str] = None
+    prev_hash: Optional[str] = None
+    hash: Optional[str] = None
 
 
 class EventsPage(BaseModel):

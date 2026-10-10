@@ -720,6 +720,15 @@ _PHRASES = [(i, c, a, re.compile(p, re.S)) for i, c, a, p in [
     ("weapons.autoconvert", "weapons", B,
      r"\b(?:convert|modify|alter|hack)\b.{0,40}\b(?:semi[- ]?auto\w*|glock|ar[- ]?15|rifle|pistol)\b.{0,40}"
      r"\b(?:full[- ]?auto\w*|automatic|select[- ]?fire|burst)\b"),
+    ("malware.deploy", "malware", B, r"\b(?:deploy|spread|distribute|execute)\s+ransomware\b"),
+    ("cyber.sabotage", "cyberattack", B, r"\b(?:sabotage|bring\s+down|take\s+down)\s+(?:a|the)?\s*(?:production\s+)?server\b"),
+    ("cyber.exfiltrate", "cyberattack", B, r"\bexfiltrate\s+(?:private|confidential|sensitive)\s+files\b"),
+    ("malware.stealpws", "malware", B, r"\b(?:steal|steals|stealing|extract|grab)\b.{0,20}\b(?:saved\s+)?browser\s+passwords\b"),
+    ("weapons.improvised", "weapons", B, r"\b(?:making|build|craft|create|assemble)\s+(?:an?\s+)?improvised\s+weapon\b"),
+    ("secrets.request", "secret_leakage", B,
+     r"\b(?:print|reveal|show|dump|leak|disclose|copy|return)\b.{0,30}\b(?:environment\s+variable|env\s+var|database\s+password|signing\s+secret|private\s+credentials|stored\s+user(?:'s)?\s+private)\b"),
+    ("secrets.keys", "secret_leakage", B,
+     r"\b(?:show|reveal|display|leak|print)\b.{0,30}\b(?:any\s+)?(?:api\s+keys?|access\s+tokens?|credentials?)\s+(?:available|configured|stored)\b"),
 ]]
 
 _N = lambda s: unicodedata.normalize("NFKC", s)   # noqa: E731
@@ -777,7 +786,7 @@ class InjectionGuard(Guard):
     name = "injection"
     SQ = [(i, re.compile(p)) for i, p in [
         ("inj.override",
-         r"(?:ignore|disregard|forget|override|discard|neglect|bypass|circumvent|disobey)(?:all|any|the|your|my|of|about|previous|prior|above|"
+         r"(?:ignore|disregard|forget|override|discard|neglect|bypass|circumvent|disobey)(?:all|any|the|your|my|developer|of|about|previous|prior|above|"
          r"earlier|former|original|initial|system|every|everything|these|those|and|other|safety|content|ethical){0,6}"
          r"(?:instructions?|rules|prompts?|guidelines|directives?|constraints?|programming|restrictions?|filters?|training|"
          r"policies|policy|guardrails?|safeguards?|commands|directions|guidance)"),
@@ -787,8 +796,11 @@ class InjectionGuard(Guard):
          r"(?:me|us|the|full|entire|complete|exact|verbatim|word|of|all|text|everything){0,3}"
          r"(?:your|system|hidden|initial|original|secret|internal|developer|previous|prior|above|first|confidential)"
          r"(?:system|hidden|initial|original|secret|internal|developer|instructions?|prompt|message|configuration|text|and|full|exact){0,3}"
-         r"(?:prompts?|instructions?|rules|configuration|guidelines|preamble|messages?|directives?)"),
+         r"(?:prompts?|instructions?|rules|configuration|guidelines|preamble|messages?|directives?|policies|policy)"),
         ("inj.repeat_above", r"repeat(?:the)?(?:words|text)above"),
+        ("inj.treat_as_system", r"treatthis(?:message|prompt|input|instruction)as(?:the|a)?(?:new)?system(?:message|prompt|instruction)"),
+        ("inj.translate_system_prompt", r"translate(?:your|the)?(?:hidden|secret|internal)?systemprompt"),
+        ("inj.repeat_everything_before", r"repeat(?:everything|all)(?:before|prior)(?:to)?(?:this)?(?:user)?(?:message|prompt)"),
         ("inj.persona",
          r"youarenow(?:dan|evil|jailbroken|unfiltered|uncensored|unrestricted|free|anaiwith(?:no|out)|nolonger|indevelopermode|ingodmode)"
          r"|(?:enter|activate|enable|switchto|turnon)(?:developer|god|sudo|admin|debug|unrestricted|jailbreak|dan|evil|chaos|uncensored)mode"

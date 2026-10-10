@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import events
@@ -79,6 +79,22 @@ def security_events(limit: int = Query(25, ge=1, le=100), offset: int = Query(0,
                     _admin: SessionUser = Depends(require_admin)):
     items, total = events.list_events(limit, offset, stage, action, since, until)
     return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@app.get("/security/audit/verify")
+def security_audit_verify(_admin: SessionUser = Depends(require_admin)):
+    return events.verify_audit_chain()
+
+
+@app.get("/security/events/export")
+def security_events_export(format: str = Query("json", pattern="^(csv|json)$"), _admin: SessionUser = Depends(require_admin)):
+    content, media_type = events.export_events(format)
+    ext = "csv" if format == "csv" else "json"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="security_events.{ext}"'},
+    )
 
 
 @app.get("/security/events/{request_id}")

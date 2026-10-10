@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend", ".env"))
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
@@ -486,6 +486,27 @@ def get_security_events(
 ) -> dict:
     items, total = events.list_events(limit, offset, stage, action, since, until)
     return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@app.get("/security/audit/verify")
+def get_security_audit_verify(
+    _admin: SessionUser = Depends(require_admin),
+) -> dict:
+    return events.verify_audit_chain()
+
+
+@app.get("/security/events/export")
+def export_security_events(
+    format: str = Query("json", pattern="^(csv|json)$"),
+    _admin: SessionUser = Depends(require_admin),
+) -> Response:
+    content, media_type = events.export_events(format)
+    ext = "csv" if format == "csv" else "json"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="security_events.{ext}"'},
+    )
 
 
 @app.get("/security/events/{request_id}")

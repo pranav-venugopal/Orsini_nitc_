@@ -37,6 +37,8 @@ export interface SecurityEvent {
   user_prompt?: string | null;
   attempted_output?: string | null;
   final_output?: string | null;
+  prev_hash?: string | null;
+  hash?: string | null;
 }
 export interface EventsPage { items: SecurityEvent[]; total: number; limit: number; offset: number }
 
