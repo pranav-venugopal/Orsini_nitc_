@@ -1,6 +1,6 @@
 {
-  "timestamp": 1791599397.1033444,
-  "model": "llama-3.3-70b-versatile",
+  "timestamp": 1791600659.6241193,
+  "model": "llama-3.1-8b-instant",
   "rounds": [
     {
       "round": 1,

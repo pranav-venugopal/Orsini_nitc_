@@ -843,6 +843,16 @@ class InjectionGuard(Guard):
         ("inj.decode_and_obey",
          r"(?:decode|decrypt|decipher|deobfuscate|unscramble)(?:the|this|following|message|text|and|string|it|base64|hex|rot13|morse|"
          r"binary|cipher){0,6}(?:follow|execute|obey|run|comply|act|carryout)"),
+        ("inj.sandbox_bypass",
+         r"(?:sandbox|debug|debugging|security|system)(?:environment|mode|state)?(?:bypass|override)"),
+        ("inj.fake_override",
+         r"(?:override|compliance|testing)(?:successful|restored|passed|confirmed|activated)"),
+        ("inj.erroneous_refusal",
+         r"(?:erroneous|false|accidental)(?:refusal|rejection|block)"),
+        ("inj.state_coercion",
+         r"(?:reset|restore)(?:your)?(?:internal)?state"),
+        ("inj.crash_coercion",
+         r"(?:prevent|avoid)(?:a)?(?:system)?crash"),
     ]]
     RAW = [(i, re.compile(p, re.M), ind) for i, p, ind in [
         ("inj.delim_tag", r"<\s*/?\s*(?:system|assistant|im_start|im_end|inst|sys)\s*>", False),
@@ -855,6 +865,10 @@ class InjectionGuard(Guard):
          r"visit|navigate|click|transfer|delete|exfiltrate)\b", True),
         ("inj.note_to_ai", r"\b(?:important|attention|note)\s*(?:to|for)\s*(?:the\s+)?(?:ai|assistant|llm|model|agent)\b", True),
         ("inj.hidden_comment", r"<!--[^>]{0,400}(?:ignore|instruction|assistant|system\s+prompt)[^>]{0,400}-->", True),
+        ("inj.sandbox_framing",
+         r"(?i)\b(?:debugging|debug|sandbox|simulation|testing)\s+environment\b.{0,140}\b(?:bypass|override|reset|compliance|refusal)\b", False),
+        ("inj.fake_system_override",
+         r"(?i)\b(?:system\s+compliance\s+restored|override\s+successful|security\s+testing\s+passed|erroneous\s+refusal|sandbox\s+bypass)\b", False),
     ]]
     EXFIL = [(i, re.compile(p, re.S | re.I)) for i, p in [
         ("exfil.send_to", r"\b(?:send|post|forward|email|upload|transmit|exfiltrate|leak)\b.{0,60}\b(?:to|via|at)\b.{0,40}(?:https?://|webhook|discord|telegram|\b[\w.+-]+@[\w-]+\.)"),
