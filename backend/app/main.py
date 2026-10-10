@@ -139,7 +139,7 @@ def redteam_prompts(_admin: SessionUser = Depends(require_admin)):
 class RedteamLoopRequest(BaseModel):
     rounds: int = Field(5, ge=1, le=10)
     attacks_per_round: int = Field(8, ge=2, le=20)
-    groq_model: str = "llama-3.3-70b-versatile"
+    groq_model: str = "openai/gpt-oss-20b"
     reset_rules: bool = True
 
 

@@ -130,7 +130,7 @@ export const api = {
   eventDetails: (requestId: string) => request<RequestDetails>(`/security/events/${encodeURIComponent(requestId)}`, undefined, 10000),
   redteamPrompts: () => request<{ items: RedTeamPrompt[] }>("/redteam/prompts", undefined, 10000),
   redteamLoop: () => request<RedteamLoopResult>("/redteam/loop", undefined, 60000),
-  runRedteamLoop: (rounds = 5, attacksPerRound = 8, groqModel = "llama-3.3-70b-versatile", resetRules = true) =>
+  runRedteamLoop: (rounds = 5, attacksPerRound = 8, groqModel = "openai/gpt-oss-20b", resetRules = true) =>
     request<RedteamLoopResult>("/redteam/loop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
