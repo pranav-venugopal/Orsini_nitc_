@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, Eye, ShieldAlert, ShieldCheck, ShieldX } from "lucide-react";
 import EventInspectorModal from "./EventInspectorModal";
 
-const ICON: Record<string, string> = { safe: "✓", unsafe: "✕", error: "!" };
+const ICON: Record<string, string> = { safe: "✓", unsafe: "✕", error: "!", review: "⚠️" };
 
 export default function EventsTable({ items }: { items: SecurityEvent[] }) {
   const reducedMotion = useReducedMotion() ?? false;

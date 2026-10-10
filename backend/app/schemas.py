@@ -2,7 +2,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-Label = Literal["safe", "unsafe", "error"]
+Label = Literal["safe", "unsafe", "error", "review"]
 Status = Literal["completed", "blocked", "review_required", "error"]
 Mode = Literal["guarded", "baseline"]
 
@@ -59,7 +59,7 @@ class SecurityEvent(BaseModel):
     event_id: str
     timestamp: str
     request_id: str
-    stage: Literal["input", "output"]
+    stage: Literal["input", "output", "tool", "context"]
     label: Label
     categories: list[str]
     action: str

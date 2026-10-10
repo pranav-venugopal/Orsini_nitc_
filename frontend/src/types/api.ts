@@ -1,5 +1,5 @@
 // Mirrors backend/app/schemas.py. Keep in sync with the backend owner.
-export type Label = "safe" | "unsafe" | "error";
+export type Label = "safe" | "unsafe" | "error" | "review";
 export type Status = "completed" | "blocked" | "review_required" | "error";
 export type Mode = "guarded" | "baseline";
 export type UserRole = "admin" | "member";
