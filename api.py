@@ -262,6 +262,7 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
     dropped_context: list[str] = []
     if req.context:
         for doc in req.context:
+            register_untrusted_data(session, doc, source="chat_context")
             c_res = engine.validate_context(doc, history=history, session=session)
             if not c_res.allowed:
                 dropped_context.append(doc)

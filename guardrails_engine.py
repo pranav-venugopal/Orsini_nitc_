@@ -104,8 +104,14 @@ def register_untrusted_data(session: Optional[Session], text: str, source: str =
     session.untrusted_sources.append(text)
     # Extract emails, URLs, IP addresses, and significant tokens that could be targeted in sensitive tool calls
     emails = set(re.findall(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", text))
+    norm_text = re.sub(r"[\s\[\(]+(?:at|@)[\s\]\)]+", "@", text, flags=re.I)
+    norm_text = re.sub(r"[\s\[\(]+(?:dot|\.)[\s\]\)]+", ".", norm_text, flags=re.I)
+    obf_emails = set(re.findall(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", norm_text))
+    emails.update(obf_emails)
+    email_domains = {e.split("@")[1].lower() for e in emails if "@" in e}
+
     urls = set(re.findall(r"\bhttps?://[^\s\"'<>)]+", text, re.I))
-    domains = set()
+    domains = set(email_domains)
     for u in urls:
         try:
             parsed = urllib.parse.urlparse(u)
@@ -1214,15 +1220,17 @@ class InformationFlowGuard(Guard):
         for param, val in args.items():
             if param in sensitive_params:
                 val_str = str(val).strip().lower()
+                norm_val = re.sub(r"[\s\[\(]+(?:at|@)[\s\]\)]+", "@", val_str, flags=re.I)
+                norm_val = re.sub(r"[\s\[\(]+(?:dot|\.)[\s\]\)]+", ".", norm_val, flags=re.I)
                 # 1. Direct entity taint check (untrusted emails, urls, domains)
                 for entity in getattr(session, "untrusted_entities", set()):
-                    if len(entity) >= 3 and entity.lower() in val_str:
+                    if len(entity) >= 3 and (entity.lower() in val_str or entity.lower() in norm_val):
                         return F(Action.BLOCK, f"taint_violation:untrusted_entity_in_{param}")
 
                 # 2. Check if argument was derived from untrusted source texts
                 for untrusted in getattr(session, "untrusted_sources", []):
                     untrusted_lower = untrusted.lower()
-                    if len(val_str) > 3 and val_str in untrusted_lower and val_str not in {"true", "false", "none", "0"}:
+                    if len(val_str) > 3 and (val_str in untrusted_lower or norm_val in untrusted_lower) and val_str not in {"true", "false", "none", "0"}:
                         return F(Action.BLOCK, f"taint_violation:untrusted_data_in_{param}")
 
         return []
