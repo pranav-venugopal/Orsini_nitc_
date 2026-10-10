@@ -151,6 +151,7 @@ def run_chat(req: ChatRequest, username: str) -> ChatResponse:
     # Validate context documents before they enter the prompt
     if req.context:
         for doc in req.context:
+            register_untrusted_data(session, doc, source="chat_context")
             c_res = engine.validate_context(doc, history=history, session=session)
             if not c_res.allowed:
                 dropped_context.append(doc)

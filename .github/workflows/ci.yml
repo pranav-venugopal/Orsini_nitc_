@@ -37,3 +37,7 @@ jobs:
       - name: Run Pytest Suite
         run: |
           pytest -q backend/tests tests
+
+      - name: Run Metamorphic Robustness Suite
+        run: |
+          python -m eval.metamorphic.run --fail-under 85 --out docs/METAMORPHIC.md

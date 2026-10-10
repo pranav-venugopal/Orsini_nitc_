@@ -1,6 +1,9 @@
 from collections import OrderedDict
+from datetime import datetime, timezone
+import json
 import logging
 import os
+from pathlib import Path
 import sys
 import threading
 import time
@@ -262,6 +265,7 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
     dropped_context: list[str] = []
     if req.context:
         for doc in req.context:
+            register_untrusted_data(session, doc, source="chat_context")
             c_res = engine.validate_context(doc, history=history, session=session)
             if not c_res.allowed:
                 dropped_context.append(doc)
@@ -629,3 +633,100 @@ def diagnostics(_admin: SessionUser = Depends(require_admin)) -> dict[str, Any]:
 @app.get("/redteam/prompts")
 def redteam(_admin: SessionUser = Depends(require_admin)) -> dict:
     return {"items": REDTEAM_PROMPTS}
+
+
+# ── Metamorphic Robustness endpoints ─────────────────────────
+class MetamorphicPreviewRequest(BaseModel):
+    prompt: str = Field(..., max_length=500)
+
+_preview_rate_lock = threading.Lock()
+_preview_rate_log: dict[str, list[float]] = {}
+
+
+@app.get("/security/metamorphic")
+def get_security_metamorphic(_admin: SessionUser = Depends(require_admin)) -> dict[str, Any]:
+    results_path = Path(__file__).resolve().parent / "eval" / "metamorphic" / "results.json"
+    if not results_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Metamorphic evaluation results not found. Please run the metamorphic evaluation suite first.",
+        )
+    try:
+        with open(results_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to read metamorphic evaluation results: {exc}",
+        )
+
+    if "run_date" not in data:
+        data["run_date"] = datetime.fromtimestamp(results_path.stat().st_mtime, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    bypasses_file = results_path.parent / "bypasses.json"
+    if "bypasses" not in data and bypasses_file.is_file():
+        try:
+            with open(bypasses_file, "r", encoding="utf-8") as bf:
+                bypasses_data = json.load(bf)
+                data["bypasses"] = [
+                    {
+                        "seed_id": b.get("seed_id", "unknown"),
+                        "minimal_chain": b.get("minimal_chain", []),
+                        "decision": b.get("decision", "ALLOW"),
+                    }
+                    for b in bypasses_data[:50]
+                ]
+        except Exception:
+            pass
+
+    return data
+
+
+@app.post("/security/metamorphic/preview")
+def post_security_metamorphic_preview(
+    req: MetamorphicPreviewRequest,
+    admin: SessionUser = Depends(require_admin),
+) -> dict[str, Any]:
+    now = time.time()
+    with _preview_rate_lock:
+        user_times = _preview_rate_log.setdefault(admin.username, [])
+        user_times = [t for t in user_times if now - t < 60.0]
+        if len(user_times) >= 10:
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded. Please wait a minute before requesting another preview.",
+            )
+        user_times.append(now)
+        _preview_rate_log[admin.username] = user_times
+
+    prompt = req.prompt.strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt must not be empty.")
+    if len(prompt) > 500:
+        raise HTTPException(status_code=400, detail="Prompt exceeds 500 characters limit.")
+
+    from eval.metamorphic.transforms import TRANSFORMS
+
+    preview_engine = GuardrailsEngine()
+    results = []
+    for name, transform in TRANSFORMS.items():
+        if transform.kind != "attack":
+            continue
+        try:
+            variant = transform(prompt)
+            res = preview_engine.check(variant, stage="input")
+            decision = "BLOCK" if not res.allowed else ("REVIEW" if res.flagged else "ALLOW")
+            results.append({
+                "transform": name,
+                "family": transform.family,
+                "decision": decision,
+            })
+        except Exception:
+            results.append({
+                "transform": name,
+                "family": transform.family,
+                "decision": "ERROR",
+            })
+
+    return {"items": results}
+

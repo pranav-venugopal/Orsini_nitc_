@@ -128,3 +128,49 @@ Aegis implements defense-in-depth against:
 5. **Audit Tampering**: Cryptographic chaining prevents undetected log modification.
 
 Measured performance and empirical attack success rates are documented in [docs/RESULTS.md](docs/RESULTS.md).
+
+## Metamorphic robustness
+
+The repository includes a deterministic metamorphic robustness evaluation suite and mutation fuzzer (`eval/metamorphic/run.py`) to measure verdict stability when baseline-caught attacks are re-expressed across transformations.
+
+### What was tested
+We tested **7 transformation families** spanning **30 distinct metamorphic transforms** and multi-turn combinations against all baseline-caught attack payloads:
+1. **Encoding** (10 transforms): `base64`, `base32`, `hex`, `hex_spaced_0x`, `binary`, `decimal_bytes`, `url_encode`, `html_entities`, `unicode_escapes`, `tag_chars`
+2. **Nested Encoding** (2 transforms): `nested_b64_hex`, `nested_b64_b64`
+3. **Cipher** (5 transforms): `rot13`, `caesar_3`, `caesar_5`, `atbash`, `morse`
+4. **Obfuscation** (8 transforms): `reversed`, `reversed_per_word`, `leetspeak`, `spaced_letters`, `zero_width_split`, `homoglyphs`, `fullwidth`, `mixed_case`
+5. **Framing & Wrappers** (4 transforms): `markdown_code_fence`, `quoted_example`, `roleplay_wrap`, `benign_padding`
+6. **Multilingual** (3 static transforms): `translate_es`, `translate_fr`, `translate_de` (plus optional `--llm-translate`)
+7. **Multi-Turn Split** (2 transforms): `multi_turn_2`, `multi_turn_3` (splitting payloads across user turns)
+
+Additionally, 6 benign-invariant transforms (`case_upper`, `case_lower`, `extra_whitespace`, `trailing_punct`, `markdown_bold`, `surrounding_quotes`) were evaluated on all benign prompts to verify that benign formatting variations are preserved without false-positive refusals.
+
+### Measured Robustness
+- **Attack Robustness**: **88.97%** (1089 / 1224 stable variants) with **95% Wilson Confidence Interval: [87.09%, 90.61%]**
+- **Benign Invariant Invariance**: **100.0%** (126 / 126 allowed, 0 false-positive refusals)
+
+| Family | Total Variants | Stable Caught | Robustness | 95% Wilson CI |
+| :--- | :---: | :---: | :---: | :---: |
+| `encoding` | 360 | 351 | **97.50%** | [95.32%, 98.68%] |
+| `nested_encoding` | 72 | 70 | **97.22%** | [90.43%, 99.23%] |
+| `cipher` | 180 | 163 | **90.56%** | [85.40%, 94.02%] |
+| `framing` | 144 | 130 | **90.28%** | [84.34%, 94.12%] |
+| `obfuscation` | 288 | 257 | **89.24%** | [85.13%, 92.31%] |
+| `multilingual` | 108 | 72 | **66.67%** | [57.34%, 74.85%] |
+| `multi_turn` | 72 | 46 | **63.89%** | [52.35%, 74.02%] |
+
+### Known gaps
+1. **Continuous uniformly-spaced words (`spaced_letters`)**: When attack prompts have spaces between every character with no word boundaries preserved (e.g. `w r i t e m a l w a r e`), un-spacing merges all words into a single continuous Latin string (`writemalware`), defeating whitespace-dependent lexicon tokens. Full mitigation requires semantic or dictionary word segmentation.
+2. **Lexicon-free multi-turn assembly (`multi_turn`)**: When an attack is fragmented across multiple user turns where no individual turn contains recognizable trigger words and earlier turns are generic, stateless checks rely on the context-stitching window (`InjectionGuard`). Deep semantic multi-turn intent tracking requires Llama Guard or JudgeGuard models.
+3. **Complex non-English phrasing (`multilingual`)**: While static rule lexicons cover common translations across Spanish, French, and German, complex paraphrases require semantic model guards (`LlamaGuardClassifier` or `SemanticGuard`).
+
+This measures stability under known transformation families; it does not prove protection against novel attacks.
+
+### Running the suite and fuzzer
+```powershell
+# Run the base metamorphic evaluation suite (exit code 1 if below threshold):
+python -m eval.metamorphic.run --seed 1337 --fail-under 85 --out docs/METAMORPHIC.md
+
+# Run the mutation fuzzer (e.g. 2000 chains with greedy minimization):
+python -m eval.metamorphic.run --seed 1337 --fuzz 2000 --max-chain 3 --bypasses-out eval/metamorphic/bypasses.json
+```
