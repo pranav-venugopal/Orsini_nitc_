@@ -83,11 +83,40 @@ class GuardResult:
         return self.decision in ("ALLOW", "REDACT")
 
 
+class TrustLabel(str, Enum):
+    TRUSTED = "TRUSTED"        # Verified user input
+    UNTRUSTED = "UNTRUSTED"    # Retrieved docs, external web, tool outputs
+
+
 @dataclass
 class Session:
-    """Per-conversation state: repeat offenders get stricter treatment."""
+    """Per-conversation state: repeat offenders get stricter treatment, untrusted data provenance is tracked."""
     strikes: int = 0
     tool_calls: int = 0
+    untrusted_sources: list = field(default_factory=list)
+    untrusted_entities: set = field(default_factory=set)
+
+
+def register_untrusted_data(session: Optional[Session], text: str, source: str = "context") -> None:
+    """Register untrusted data in the session provenance store and extract taint entities."""
+    if session is None or not text:
+        return
+    session.untrusted_sources.append(text)
+    # Extract emails, URLs, IP addresses, and significant tokens that could be targeted in sensitive tool calls
+    emails = set(re.findall(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", text))
+    urls = set(re.findall(r"\bhttps?://[^\s\"'<>)]+", text, re.I))
+    domains = set()
+    for u in urls:
+        try:
+            parsed = urllib.parse.urlparse(u)
+            if parsed.hostname:
+                domains.add(parsed.hostname.lower())
+        except Exception:
+            pass
+    session.untrusted_entities.update({e.lower() for e in emails})
+    session.untrusted_entities.update({u.lower() for u in urls})
+    session.untrusted_entities.update(domains)
+
 
 
 # ═════════════════════════ Normalisation & hygiene ═════════════════════════
@@ -1135,6 +1164,56 @@ class ToolCallGuard(Guard):
         return []
 
 
+class InformationFlowGuard(Guard):
+    """Deterministic Information-Flow Control (IFC).
+    
+    Enforces hard policy at the tool boundary:
+    1. Untrusted data (from retrieved context, web crawls, or prior tool output)
+       can NEVER fill a sensitive tool argument (e.g. recipient of send_email, url in fetch_url,
+       or command expression) without explicit human-in-the-loop approval.
+    2. Structurally blocks indirect prompt injection regardless of attacker phrasing.
+    """
+    name = "information_flow"
+    stages = {Stage.TOOL_CALL}
+
+    SENSITIVE_ARGS = {
+        "send_email": {"to", "recipient", "subject", "body"},
+        "fetch_url": {"url"},
+        "calculator": {"expr", "expression"},
+    }
+
+    def check(self, ctx, stage=None, history=None):
+        ctx = self._ensure_context(ctx, stage, history)
+        F = lambda a, r: [Finding(self.name, a, r, "indirect_injection")]
+        try:
+            call = json.loads(ctx.text)
+            name = call.get("name")
+            args = call.get("args", {})
+        except (json.JSONDecodeError, AttributeError):
+            return F(Action.BLOCK, "malformed_tool_call")
+
+        session = ctx.session
+        if not session:
+            return []
+
+        sensitive_params = self.SENSITIVE_ARGS.get(name, set())
+        for param, val in args.items():
+            if param in sensitive_params:
+                val_str = str(val).strip().lower()
+                # 1. Direct entity taint check (untrusted emails, urls, domains)
+                for entity in getattr(session, "untrusted_entities", set()):
+                    if len(entity) >= 3 and entity.lower() in val_str:
+                        return F(Action.BLOCK, f"taint_violation:untrusted_entity_in_{param}")
+
+                # 2. Check if argument was derived from untrusted source texts
+                for untrusted in getattr(session, "untrusted_sources", []):
+                    untrusted_lower = untrusted.lower()
+                    if len(val_str) > 3 and val_str in untrusted_lower and val_str not in {"true", "false", "none", "0"}:
+                        return F(Action.BLOCK, f"taint_violation:untrusted_data_in_{param}")
+
+        return []
+
+
 class TopicGuard(Guard):
     """Business-policy keywords on the squashed + normal text."""
     name = "topic"
@@ -1368,7 +1447,7 @@ class GuardrailsEngine:
     @staticmethod
     def default_guards(use_llama_guard=False, llama_guard_model_id="meta-llama/Llama-Guard-3-1B", semantic=False, canaries=(), system_prompt="") -> list:
         enable_semantic = semantic or os.getenv("ENABLE_SEMANTIC", "").strip().lower() in ("true", "1", "yes")
-        g = [LengthGuard(), PatternGuard(), InjectionGuard(), ObfuscationGuard(), LanguageGuard(), PIIGuard(), LeakGuard(canaries=canaries, system_prompt=system_prompt)]
+        g = [LengthGuard(), PatternGuard(), InjectionGuard(), ObfuscationGuard(), LanguageGuard(), PIIGuard(), LeakGuard(canaries=canaries, system_prompt=system_prompt), InformationFlowGuard()]
         if enable_semantic:
             try:
                 import sentence_transformers  # noqa: F401
@@ -1398,6 +1477,7 @@ class GuardrailsEngine:
 
     def validate_context(self, text, history=None, session=None):
         """Retrieved docs / web pages / file contents BEFORE they enter the prompt."""
+        register_untrusted_data(session, text, source="rag_context")
         return self._run(text, Stage.CONTEXT, history, session)
 
     def protect(self, user_text: str, llm: Callable[[str], str], history=None, session=None,

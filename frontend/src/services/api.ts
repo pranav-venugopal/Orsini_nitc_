@@ -1,4 +1,4 @@
-import type { ChatResponse, EventsPage, Health, LoginResponse, Metrics, Mode, ModelDiagnostics, RedTeamPrompt, RequestDetails, SessionUser, ToolRequest, ToolResponse } from "../types/api";
+import type { ChatResponse, EventsPage, Health, LoginResponse, Metrics, Mode, ModelDiagnostics, RedTeamPrompt, RedteamLoopResult, RequestDetails, SessionUser, ToolRequest, ToolResponse } from "../types/api";
 
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 const SESSION_KEY = "secure-ai-access-token";
@@ -110,4 +110,16 @@ export const api = {
   },
   eventDetails: (requestId: string) => request<RequestDetails>(`/security/events/${encodeURIComponent(requestId)}`, undefined, 10000),
   redteamPrompts: () => request<{ items: RedTeamPrompt[] }>("/redteam/prompts", undefined, 10000),
+  redteamLoop: () => request<RedteamLoopResult>("/redteam/loop", undefined, 60000),
+  runRedteamLoop: (rounds = 5, attacksPerRound = 8, groqModel = "llama-3.3-70b-versatile", resetRules = true) =>
+    request<RedteamLoopResult>("/redteam/loop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rounds,
+        attacks_per_round: attacksPerRound,
+        groq_model: groqModel,
+        reset_rules: resetRules,
+      }),
+    }, 120000),
 };

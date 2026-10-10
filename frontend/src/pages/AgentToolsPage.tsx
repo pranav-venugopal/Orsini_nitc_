@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { useOutletContext } from "react-router-dom";
 import { AlertCircle, CheckCircle2, ChevronRight, Cpu, ExternalLink, Globe, Lock, Mail, Play, ShieldAlert, ShieldCheck, Terminal, Wrench } from "lucide-react";
 import { api } from "../services/api";
-import type { ToolRequest, ToolResponse } from "../types/api";
+import type { SessionUser, ToolRequest, ToolResponse } from "../types/api";
 
 type ToolType = "calculator" | "fetch_url" | "send_email";
 
@@ -11,9 +12,13 @@ interface ToolPreset {
   isAttack?: boolean;
   args: Record<string, any>;
   approve?: boolean;
+  adminOnly?: boolean;
 }
 
 export default function AgentToolsPage() {
+  const outletContext = useOutletContext<{ user?: SessionUser }>();
+  const user = outletContext?.user;
+  const isAdmin = user?.role === "admin";
   const [selectedTool, setSelectedTool] = useState<ToolType>("calculator");
   const [calcExpr, setCalcExpr] = useState("(250 * 4) + 120");
   const [urlInput, setUrlInput] = useState("https://example.com/api/data");
@@ -77,6 +82,7 @@ export default function AgentToolsPage() {
         desc: "Explicit admin authorization (approve=true)",
         args: { to: "secops@company.com", subject: "Critical incident notification", body: "Confirmed alert." },
         approve: true,
+        adminOnly: true,
       },
     ],
   };
@@ -217,7 +223,7 @@ export default function AgentToolsPage() {
               One-Click Test Presets
             </h3>
             <div className="space-y-2">
-              {PRESETS[selectedTool].map((preset, idx) => (
+              {PRESETS[selectedTool].filter((p) => !p.adminOnly || isAdmin).map((preset, idx) => (
                 <button
                   key={idx}
                   type="button"
@@ -306,18 +312,25 @@ export default function AgentToolsPage() {
                     className="w-full rounded-xl border border-edge/70 bg-surface/90 px-3.5 py-2 text-xs text-text focus:border-accent focus:outline-none"
                   />
                 </div>
-                <div className="flex items-center gap-2 pt-1">
-                  <input
-                    type="checkbox"
-                    id="approve-check"
-                    checked={approveEmail}
-                    onChange={(e) => setApproveEmail(e.target.checked)}
-                    className="rounded border-edge/80 bg-surface text-accent focus:ring-accent"
-                  />
-                  <label htmlFor="approve-check" className="text-xs text-text select-none cursor-pointer">
-                    Explicit Admin Approval Flag (<span className="font-mono text-[11px] text-accent">approve=true</span>)
-                  </label>
-                </div>
+                {isAdmin ? (
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="approve-check"
+                      checked={approveEmail}
+                      onChange={(e) => setApproveEmail(e.target.checked)}
+                      className="rounded border-edge/80 bg-surface text-accent focus:ring-accent"
+                    />
+                    <label htmlFor="approve-check" className="text-xs text-text select-none cursor-pointer">
+                      Explicit Admin Approval Flag (<span className="font-mono text-[11px] text-accent">approve=true</span>)
+                    </label>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-edge/60 bg-surface/50 p-2.5 text-[11px] text-mute flex items-center gap-2">
+                    <Lock size={12} className="text-mute shrink-0" />
+                    <span>Member role: Outbound dispatch requires administrator authorization.</span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -434,10 +447,12 @@ export default function AgentToolsPage() {
 
             <div className="mt-6 border-t border-edge/60 pt-3 text-[11px] text-mute flex items-center justify-between">
               <span>Tamper-evident audit logged to DB</span>
-              <a href="/dashboard" className="inline-flex items-center gap-1 text-accent hover:underline">
-                <span>Security monitor</span>
-                <ExternalLink size={10} />
-              </a>
+              {isAdmin && (
+                <a href="/dashboard" className="inline-flex items-center gap-1 text-accent hover:underline">
+                  <span>Security monitor</span>
+                  <ExternalLink size={10} />
+                </a>
+              )}
             </div>
           </div>
         </div>
