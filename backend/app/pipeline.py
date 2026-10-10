@@ -1,8 +1,13 @@
-"""Security pipeline: input check -> generate -> output check. The backend decides; the UI only displays."""
 import logging
+import os
+import sys
 import time
 import uuid
 from typing import Any
+
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
 from guardrails_engine import GuardrailsEngine, ToolCallGuard
 from hallucination import HallucinationResult, check_hallucination
