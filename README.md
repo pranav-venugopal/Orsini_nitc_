@@ -120,7 +120,7 @@ python eval/run_redteam.py
 - **Hallucination mitigation:** Outputs are verified for factual claim contradictions and self-consistency agreement.
 
 ## Threat model and limits
-Aegis implements defense-in-depth against:
+Ultron implements defense-in-depth against:
 1. **Prompt Injection & Jailbreaks**: Multi-layer regex squashing, de-obfuscation (base64, hex, rot13, zero-width, homoglyphs), and multi-turn state tracking.
 2. **Data Leakage & Canary Tokens**: Canary insertion in system prompts with output blocking on detection.
 3. **Unsafe Tool Execution**: Schema, domain, and command validation on all tool arguments with explicit admin approval gates.

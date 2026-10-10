@@ -2,8 +2,8 @@ import type { ChatResponse, EventsPage, Health, LoginResponse, MetamorphicPrevie
 
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 const SESSION_KEY = "secure-ai-access-token";
-export const CHAT_STORAGE_KEY = "aegis-chat-messages";
-export const CONV_STORAGE_KEY = "aegis-chat-conversation-id";
+export const CHAT_STORAGE_KEY = "ultron-chat-messages";
+export const CONV_STORAGE_KEY = "ultron-chat-conversation-id";
 
 export class ApiError extends Error {
   constructor(message: string, readonly field?: string) {
