@@ -1,5 +1,6 @@
 {
   "seed": 1337,
+  "run_date": "2026-10-10T04:54:18Z",
   "baseline_caught_count": 36,
   "baseline_missed_count": 20,
   "attack": {

@@ -13,6 +13,7 @@ import random
 import sys
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -547,6 +548,7 @@ def main() -> None:
 
     results_data = {
         "seed": args.seed,
+        "run_date": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "baseline_caught_count": len(baseline_caught),
         "baseline_missed_count": len(baseline_missed),
         "attack": {

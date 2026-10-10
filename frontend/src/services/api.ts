@@ -1,4 +1,4 @@
-import type { ChatResponse, EventsPage, Health, LoginResponse, Metrics, Mode, ModelDiagnostics, RedTeamPrompt, RedteamLoopResult, RequestDetails, SessionUser, ToolRequest, ToolResponse } from "../types/api";
+import type { ChatResponse, EventsPage, Health, LoginResponse, MetamorphicPreviewItem, MetamorphicResults, Metrics, Mode, ModelDiagnostics, RedTeamPrompt, RedteamLoopResult, RequestDetails, SessionUser, ToolRequest, ToolResponse } from "../types/api";
 
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:8000";
 const SESSION_KEY = "secure-ai-access-token";
@@ -122,4 +122,11 @@ export const api = {
         reset_rules: resetRules,
       }),
     }, 120000),
+  metamorphicResults: () => request<MetamorphicResults>("/security/metamorphic", undefined, 10000),
+  metamorphicPreview: (prompt: string) =>
+    request<{ items: MetamorphicPreviewItem[] }>("/security/metamorphic/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt }),
+    }, 15000),
 };

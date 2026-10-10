@@ -147,3 +147,62 @@ export interface RedteamLoopResult {
   total_dynamic_rules: number;
 }
 
+export interface MetamorphicGroupStat {
+  key: string;
+  total: number;
+  stable: number;
+  violations: number;
+  robustness_pct: number;
+  ci_95: [number, number];
+  before_robustness_pct?: number;
+}
+
+export interface MetamorphicViolation {
+  seed_id: string;
+  category: string;
+  transform: string;
+  decision: string;
+  reason?: string;
+  snippet?: string;
+}
+
+export interface MetamorphicBypass {
+  seed_id: string;
+  minimal_chain: string[];
+  decision: string;
+}
+
+export interface MetamorphicSuiteStats {
+  total: number;
+  stable: number;
+  violations: number;
+  robustness_pct: number;
+  ci_95: [number, number];
+  by_family?: MetamorphicGroupStat[];
+  by_category?: MetamorphicGroupStat[];
+  by_rule?: MetamorphicGroupStat[];
+}
+
+export interface MetamorphicResults {
+  seed: number;
+  run_date?: string;
+  baseline_caught_count: number;
+  baseline_missed_count: number;
+  attack: MetamorphicSuiteStats;
+  benign?: MetamorphicSuiteStats;
+  violations?: MetamorphicViolation[];
+  bypasses?: MetamorphicBypass[];
+  before_after?: Array<{
+    family: string;
+    before_pct: number;
+    after_pct: number;
+  }>;
+}
+
+export interface MetamorphicPreviewItem {
+  transform: string;
+  family: string;
+  decision: "ALLOW" | "BLOCK" | "REVIEW" | "ERROR";
+}
+
+
