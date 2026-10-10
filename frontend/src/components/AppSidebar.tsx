@@ -18,7 +18,7 @@ export default function WorkspaceNav({ theme, role, username, onToggleTheme, onS
   onToggleTheme: () => void;
   onSignOut: () => void;
 }) {
-  const visibleLinks = role === "admin" ? links : links.slice(0, 2);
+  const visibleLinks = role === "admin" ? links : links.filter((l) => l.to === "/chat");
   return (
     <header className="workspace-header z-30 shrink-0 border-b border-edge/55 px-4 py-3 backdrop-blur-2xl md:px-8">
       <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-5 gap-y-2">

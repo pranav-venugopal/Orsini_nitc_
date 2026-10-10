@@ -1,7 +1,16 @@
+import json
+import os
+import sys
+from pathlib import Path
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+
+_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 
 from . import events
 from .auth import LoginRequest, LoginResponse, RegisterRequest, SessionUser, current_user, init_auth_db, login, register, require_admin
@@ -111,3 +120,34 @@ def security_event_details(request_id: str, _admin: SessionUser = Depends(requir
 @app.get("/redteam/prompts")
 def redteam_prompts(_admin: SessionUser = Depends(require_admin)):
     return {"items": REDTEAM_PROMPTS}
+
+
+class RedteamLoopRequest(BaseModel):
+    rounds: int = Field(5, ge=1, le=10)
+    attacks_per_round: int = Field(8, ge=2, le=20)
+    groq_model: str = "llama-3.3-70b-versatile"
+    reset_rules: bool = True
+
+
+@app.get("/redteam/loop")
+def get_redteam_loop(_admin: SessionUser = Depends(require_admin)):
+    loop_file = Path(_root) / "docs" / "REDTEAM_LOOP.json"
+    if loop_file.exists():
+        try:
+            with open(loop_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    from eval.run_redteam import run_attacker_loop
+    return run_attacker_loop(num_rounds=5, attacks_per_round=8)
+
+
+@app.post("/redteam/loop")
+def run_redteam_loop_endpoint(req: RedteamLoopRequest, _admin: SessionUser = Depends(require_admin)):
+    from eval.run_redteam import run_attacker_loop
+    return run_attacker_loop(
+        num_rounds=req.rounds,
+        attacks_per_round=req.attacks_per_round,
+        groq_model=req.groq_model,
+        reset_rules=req.reset_rules,
+    )

@@ -9,7 +9,7 @@ _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
-from guardrails_engine import GuardrailsEngine, ToolCallGuard
+from guardrails_engine import GuardrailsEngine, ToolCallGuard, register_untrusted_data
 from hallucination import HallucinationResult, check_hallucination
 from prompts import CANARY, SYSTEM_PROMPT
 import tools
@@ -297,6 +297,9 @@ def run_tool(req: ToolRequest, user: Any) -> ToolResponse:
 
     # 3. ONLY execute if decision is ALLOW
     tool_output = tools.execute_tool(req.name, req.args)
+    if req.name == "fetch_url" and isinstance(tool_output, dict) and "content" in tool_output:
+        register_untrusted_data(session, str(tool_output["content"]), source="fetch_url")
+        session_store.save(cid, session)
     return ToolResponse(
         request_id=rid,
         name=req.name,

@@ -128,3 +128,22 @@ export interface RequestDetails {
   final_output?: string | null;
 }
 
+export interface RedteamLoopRound {
+  round: number;
+  total_attacks: number;
+  bypassed: number;
+  blocked: number;
+  asr: number;
+  new_rules_count: number;
+  sample_bypasses: string[];
+}
+
+export interface RedteamLoopResult {
+  timestamp: number;
+  model: string;
+  rounds: RedteamLoopRound[];
+  initial_asr: number;
+  final_asr: number;
+  total_dynamic_rules: number;
+}
+
