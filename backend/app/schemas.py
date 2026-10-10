@@ -32,6 +32,9 @@ class ChatResponse(BaseModel):
     mode: Mode
     mock_models: bool  # True while stand-in models are active
     dropped_context: list[str] = Field(default_factory=list)
+    low_confidence: bool = False
+    unsupported_claims: list[str] = Field(default_factory=list)
+    check_skipped: bool = False
 
 
 class ToolRequest(BaseModel):

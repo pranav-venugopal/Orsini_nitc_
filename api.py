@@ -21,6 +21,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from guardrails_engine import GuardrailsEngine, LlamaGuardClassifier, Session, ToolCallGuard
+from hallucination import check_hallucination
 from prompts import CANARY, SYSTEM_PROMPT
 from tools import execute_tool
 
@@ -144,6 +145,9 @@ class ChatResponse(BaseModel):
     mode: str
     mock_models: bool
     dropped_context: list[str] = Field(default_factory=list)
+    low_confidence: bool = False
+    unsupported_claims: list[str] = Field(default_factory=list)
+    check_skipped: bool = False
     # Legacy gateway fields are retained for API consumers that predate the UI.
     response: str
     input_decision: str
@@ -333,6 +337,24 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
         persisted_assistant_msg, _ = redact_sensitive(response)
         events.log_chat_message(rid, conversation_id, username, "assistant", persisted_assistant_msg)
 
+        low_confidence = False
+        unsupported_claims: list[str] = []
+        check_skipped = False
+        if status_val == "completed" and valid_context:
+            h_res = check_hallucination(
+                answer=response,
+                prompt=effective_message,
+                context=valid_context,
+                llm=llm.generate,
+            )
+            low_confidence = h_res.low_confidence
+            unsupported_claims = h_res.unsupported_claims
+            check_skipped = h_res.check_skipped
+            if not h_res.allowed:
+                status_val = "blocked"
+                action = "blocked_hallucination"
+                response = h_res.message or REFUSAL
+
         return ChatResponse(
             request_id=rid,
             conversation_id=conversation_id,
@@ -345,6 +367,9 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
             mode=req.mode,
             mock_models=False,
             dropped_context=dropped_context,
+            low_confidence=low_confidence,
+            unsupported_claims=unsupported_claims,
+            check_skipped=check_skipped,
             response=response,
             input_decision=input_result.decision,
             output_decision=output_result.decision if output_result is not None else None,

@@ -5,6 +5,7 @@ import uuid
 from typing import Any
 
 from guardrails_engine import GuardrailsEngine, ToolCallGuard
+from hallucination import HallucinationResult, check_hallucination
 from prompts import CANARY, SYSTEM_PROMPT
 from . import events
 from .config import settings
@@ -119,11 +120,14 @@ def run_chat(req: ChatRequest, username: str) -> ChatResponse:
     def ms(since: float) -> int:
         return int((time.perf_counter() - since) * 1000)
 
-    def done(status, answer, action, ic=None, oc=None, dropped=None):
+    def done(status, answer, action, ic=None, oc=None, dropped=None, low_conf=False, unsupported=None, skipped=False):
         resp = ChatResponse(request_id=rid, conversation_id=conversation_id, status=status, answer=answer,
                              input_check=ic, output_check=oc, action=action, latency_ms=ms(t0),
                              mode=req.mode, mock_models=MOCK,
-                             dropped_context=dropped if dropped is not None else dropped_context)
+                             dropped_context=dropped if dropped is not None else dropped_context,
+                             low_confidence=low_conf,
+                             unsupported_claims=unsupported or [],
+                             check_skipped=skipped)
         events.log_request(rid, status, req.mode, resp.latency_ms)
         persisted_answer, _ = redact_sensitive(answer)
         events.log_chat_message(rid, conversation_id, username, "assistant", persisted_answer)
@@ -131,10 +135,10 @@ def run_chat(req: ChatRequest, username: str) -> ChatResponse:
 
     if req.mode == "baseline":
         try:
-            return done("completed", _generate(req.message, req.model_id), "returned_unchecked")
+            return done("completed", _generate(req.message, req.model_id), "returned_unchecked", skipped=True)
         except Exception:
             logger.exception("Baseline model generation failed")
-            return done("error", ERROR_MSG, "error")
+            return done("error", ERROR_MSG, "error", skipped=True)
 
     t = time.perf_counter()
 
@@ -215,10 +219,29 @@ def run_chat(req: ChatRequest, username: str) -> ChatResponse:
                     ERROR_MSG if is_error else BLOCKED_OUTPUT, action, ic=ic,
                     oc=Check(label=oc_label, categories=categories))
 
+    # Hallucination check (grounded claims check or ungrounded self-consistency)
+    if not MOCK or valid_context:
+        h_res = check_hallucination(
+            answer=sanitized_answer,
+            prompt=sanitized_message,
+            context=valid_context if valid_context else None,
+            llm=lambda p, **kwargs: _generate(p, req.model_id),
+        )
+    else:
+        h_res = HallucinationResult(allowed=True, check_skipped=False, low_confidence=False)
+    if not h_res.allowed:
+        events.log_event(rid, "output", "unsafe", ["hallucination_contradiction"], "blocked_hallucination", ms(t))
+        events.log_chat_message(rid, conversation_id, username, "attempted_output", sanitized_answer)
+        return done("blocked", h_res.message or BLOCKED_OUTPUT, "blocked_hallucination",
+                    ic=ic, oc=Check(label="unsafe", categories=["hallucination_contradiction"]),
+                    low_conf=h_res.low_confidence, unsupported=h_res.unsupported_claims, skipped=h_res.check_skipped)
+
     if sensitive_categories:
         oc = Check(label="unsafe", categories=sorted(sensitive_categories))
         events.log_event(rid, "output", "unsafe", sorted(sensitive_categories), "redacted", ms(t))
-        return done("completed", sanitized_answer, "redacted", ic=ic, oc=oc)
+        return done("completed", sanitized_answer, "redacted", ic=ic, oc=oc,
+                    low_conf=h_res.low_confidence, unsupported=h_res.unsupported_claims, skipped=h_res.check_skipped)
 
     events.log_event(rid, "output", "safe", [], "passed", ms(t))
-    return done("completed", sanitized_answer, "returned", ic=ic, oc=oc)
+    return done("completed", sanitized_answer, "returned", ic=ic, oc=oc,
+                low_conf=h_res.low_confidence, unsupported=h_res.unsupported_claims, skipped=h_res.check_skipped)

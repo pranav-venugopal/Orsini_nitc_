@@ -19,6 +19,10 @@ export interface ChatResponse {
   latency_ms: number;
   mode: Mode;
   mock_models: boolean;
+  dropped_context?: string[];
+  low_confidence?: boolean;
+  unsupported_claims?: string[];
+  check_skipped?: boolean;
 }
 
 export interface SecurityEvent {
