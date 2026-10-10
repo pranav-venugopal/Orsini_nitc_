@@ -61,6 +61,25 @@ const VALID_STATUS = ["completed", "blocked", "review_required", "error"];
 
 export const api = {
   health: () => request<Health>("/health", undefined, 8000),
+  configMode: async (mode: string) => {
+    // Need custom fetches since we need to hit two different ports
+    const token = typeof window !== "undefined" ? window.sessionStorage.getItem(SESSION_KEY) : null;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    
+    // Hit backend
+    await fetch("http://localhost:8000/config/mode", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ mode }),
+    });
+    // Hit gateway
+    await fetch("http://localhost:8001/config/mode", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ mode }),
+    });
+  },
   async login(username: string, password: string): Promise<SessionUser> {
     const result = await request<LoginResponse>("/auth/login", {
       method: "POST",
