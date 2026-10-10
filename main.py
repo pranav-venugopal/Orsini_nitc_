@@ -5,6 +5,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from guardrails_engine import GuardrailsEngine
+from prompts import SYSTEM_PROMPT
 
 
 MODEL_ID = "Qwen/Qwen2.5-3B-Instruct"
@@ -72,11 +73,7 @@ class MainLLM:
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "You are a helpful, accurate assistant. "
-                    "Answer clearly and honestly. "
-                    "If you are uncertain, say so."
-                ),
+                "content": SYSTEM_PROMPT,
             },
             {"role": "user", "content": prompt},
         ]

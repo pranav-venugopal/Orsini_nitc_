@@ -1,6 +1,8 @@
+from collections import OrderedDict
 import logging
 import os
 import sys
+import threading
 import time
 import uuid
 from typing import Any, Optional
@@ -18,7 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
-from guardrails_engine import GuardrailsEngine, LlamaGuardClassifier
+from guardrails_engine import GuardrailsEngine, LlamaGuardClassifier, Session
+from prompts import CANARY, SYSTEM_PROMPT
 
 from app import events
 from app.auth import (
@@ -79,10 +82,72 @@ engine = GuardrailsEngine(
     GuardrailsEngine.default_guards(
         use_llama_guard=True,
         llama_guard_model_id=os.getenv("LLAMA_GUARD_MODEL_ID", "meta-llama/Llama-Guard-3-1B"),
+        canaries=[CANARY],
+        system_prompt=SYSTEM_PROMPT,
     )
 )
 
 REFUSAL = "Sorry, I can't help with that request."
+
+
+class SessionStore:
+    def __init__(self, redis_url: str | None = None, max_size: int = 1000):
+        self.redis_url = redis_url
+        self.max_size = max_size
+        self._lock = threading.Lock()
+        self._memory: OrderedDict[str, Session] = OrderedDict()
+        self._redis = None
+        if redis_url:
+            try:
+                import redis
+                self._redis = redis.Redis.from_url(redis_url, decode_responses=True)
+            except Exception as e:
+                logger.warning("Failed to connect to Redis for sessions: %s", e)
+                self._redis = None
+
+    def get(self, conversation_id: str) -> Session:
+        if not conversation_id:
+            return Session()
+        if self._redis:
+            try:
+                data = self._redis.hgetall(f"session:{conversation_id}")
+                if data:
+                    return Session(
+                        strikes=int(data.get("strikes", 0)),
+                        tool_calls=int(data.get("tool_calls", 0)),
+                    )
+            except Exception as exc:
+                logger.error("Redis session get failed: %s", exc)
+        with self._lock:
+            if conversation_id in self._memory:
+                self._memory.move_to_end(conversation_id)
+                return self._memory[conversation_id]
+            s = Session()
+            self._memory[conversation_id] = s
+            if len(self._memory) > self.max_size:
+                self._memory.popitem(last=False)
+            return s
+
+    def save(self, conversation_id: str, session: Session) -> None:
+        if not conversation_id:
+            return
+        if self._redis:
+            try:
+                self._redis.hset(f"session:{conversation_id}", mapping={
+                    "strikes": session.strikes,
+                    "tool_calls": session.tool_calls,
+                })
+                self._redis.expire(f"session:{conversation_id}", 86400)
+            except Exception as exc:
+                logger.error("Redis session save failed: %s", exc)
+        with self._lock:
+            self._memory[conversation_id] = session
+            self._memory.move_to_end(conversation_id)
+            if len(self._memory) > self.max_size:
+                self._memory.popitem(last=False)
+
+
+session_store = SessionStore(redis_url=os.getenv("REDIS_URL") or settings.redis_url)
 
 app.add_middleware(
     CORSMiddleware,
@@ -108,18 +173,6 @@ def optional_user(credentials: HTTPAuthorizationCredentials | None = Depends(_be
         return current_user(credentials)
     except HTTPException:
         return None
-
-
-def check_admin(credentials: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> SessionUser:
-    if credentials is None:
-        return SessionUser(username="admin", role="admin")
-    try:
-        user = current_user(credentials)
-        if user.role != "admin":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator role required.")
-        return user
-    except HTTPException:
-        return SessionUser(username="admin", role="admin")
 
 
 class ChatRequest(BaseModel):
@@ -214,6 +267,10 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
     conversation_id = req.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
     username = user.username if user else "anonymous"
 
+    # Load prior conversation history and per-conversation session state
+    history = events.get_conversation_history(conversation_id, limit=20)
+    session = session_store.get(conversation_id)
+
     # Redact before persisting to chat history
     persisted_user_msg, _ = redact_sensitive(req.message)
     events.log_chat_message(rid, conversation_id, username, "user", persisted_user_msg)
@@ -222,8 +279,11 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
         response, input_result, output_result = engine.protect(
             user_text=req.message,
             llm=llm.generate,
+            history=history,
+            session=session,
             refusal=REFUSAL,
         )
+        session_store.save(conversation_id, session)
         latency = int((time.perf_counter() - t0) * 1000)
         status_val, action = _result_status(input_result, output_result)
 
@@ -253,11 +313,12 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
             oc_latency = int(getattr(output_result, "latency_ms", 0))
             events.log_event(rid, "output", oc_label, oc_categories, oc_action, oc_latency)
 
-        # If model generated a response that was blocked by output guard, persist attempted output
+        # If model generated a response that was blocked by output guard, persist attempted output redacted
         if output_result is not None and not output_result.allowed:
             attempted_raw = getattr(output_result, "raw_text", "")
             if attempted_raw:
-                events.log_chat_message(rid, conversation_id, username, "attempted_output", attempted_raw)
+                persisted_attempted, _ = redact_sensitive(attempted_raw)
+                events.log_chat_message(rid, conversation_id, username, "attempted_output", persisted_attempted)
 
         # Log overall request
         events.log_request(rid, status_val, req.mode, latency)
@@ -319,7 +380,7 @@ def me(user: SessionUser = Depends(current_user)) -> SessionUser:
 
 # ── Security Monitor telemetry endpoints ─────────────────────
 @app.get("/security/metrics", response_model=Metrics)
-def metrics(_admin: SessionUser = Depends(check_admin)) -> dict:
+def metrics(_admin: SessionUser = Depends(require_admin)) -> dict:
     return events.metrics()
 
 
@@ -331,7 +392,7 @@ def get_security_events(
     action: Optional[str] = None,
     since: Optional[str] = None,
     until: Optional[str] = None,
-    _admin: SessionUser = Depends(check_admin),
+    _admin: SessionUser = Depends(require_admin),
 ) -> dict:
     items, total = events.list_events(limit, offset, stage, action, since, until)
     return {"items": items, "total": total, "limit": limit, "offset": offset}
@@ -340,14 +401,14 @@ def get_security_events(
 @app.get("/security/events/{request_id}")
 def get_security_event_details(
     request_id: str,
-    _admin: SessionUser = Depends(check_admin),
+    _admin: SessionUser = Depends(require_admin),
 ) -> dict[str, Any]:
     return events.get_request_chat_details(request_id)
 
 
 
 @app.get("/security/diagnostics")
-def diagnostics(_admin: SessionUser = Depends(check_admin)) -> dict[str, Any]:
+def diagnostics(_admin: SessionUser = Depends(require_admin)) -> dict[str, Any]:
     try:
         import torch
         cuda_avail = torch.cuda.is_available()
@@ -444,5 +505,5 @@ def diagnostics(_admin: SessionUser = Depends(check_admin)) -> dict[str, Any]:
 
 
 @app.get("/redteam/prompts")
-def redteam(_admin: SessionUser = Depends(check_admin)) -> dict:
+def redteam(_admin: SessionUser = Depends(require_admin)) -> dict:
     return {"items": REDTEAM_PROMPTS}

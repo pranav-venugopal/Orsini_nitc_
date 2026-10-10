@@ -1353,8 +1353,8 @@ class GuardrailsEngine:
         self.risk_threshold, self.lockout, self.short_circuit = risk_threshold, lockout_strikes, short_circuit
 
     @staticmethod
-    def default_guards(use_llama_guard=False, llama_guard_model_id="meta-llama/Llama-Guard-3-1B", semantic=False) -> list:
-        g = [LengthGuard(), PatternGuard(), InjectionGuard(), ObfuscationGuard(), LanguageGuard(), PIIGuard(), LeakGuard()]
+    def default_guards(use_llama_guard=False, llama_guard_model_id="meta-llama/Llama-Guard-3-1B", semantic=False, canaries=(), system_prompt="") -> list:
+        g = [LengthGuard(), PatternGuard(), InjectionGuard(), ObfuscationGuard(), LanguageGuard(), PIIGuard(), LeakGuard(canaries=canaries, system_prompt=system_prompt)]
         if semantic:
             g.append(SemanticGuard())
         if use_llama_guard:

@@ -157,6 +157,21 @@ def list_chat_messages(username: str, conversation_id: str | None, limit: int) -
     return [{**dict(row), "created_at": _iso(row["created_at"])} for row in reversed(rows)]
 
 
+def get_conversation_history(conversation_id: str, limit: int = 20) -> list[dict]:
+    if not conversation_id:
+        return []
+    order = "id" if database.using_postgres() else "rowid"
+    with _lock:
+        with database.connection() as conn:
+            with conn.cursor() if database.using_postgres() else conn as cursor:
+                rows = database.execute(
+                    cursor,
+                    f"SELECT role, content FROM chat_messages WHERE conversation_id = ? AND role IN ('user', 'assistant') ORDER BY {order} DESC LIMIT ?",
+                    (conversation_id, limit),
+                ).fetchall()
+    return [{"role": str(row["role"]), "content": str(row["content"])} for row in reversed(rows)]
+
+
 def _json_value(value: object) -> object:
     return json.loads(value) if isinstance(value, str) else value
 

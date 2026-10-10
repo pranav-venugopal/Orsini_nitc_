@@ -9,6 +9,8 @@ import os
 
 from groq import Groq
 
+from prompts import SYSTEM_PROMPT
+
 logger = logging.getLogger("groq_llm")
 
 GROQ_MODEL_ID = os.getenv("GROQ_MODEL_ID", "llama-3.1-8b-instant")
@@ -34,11 +36,7 @@ class GroqLLM:
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        "You are a helpful, accurate assistant. "
-                        "Answer clearly and honestly. "
-                        "If you are uncertain, say so."
-                    ),
+                    "content": SYSTEM_PROMPT,
                 },
                 {"role": "user", "content": prompt},
             ],

@@ -136,7 +136,7 @@ def run_chat(req: ChatRequest, username: str) -> ChatResponse:
         action = "error" if oc.label == "error" else "blocked_output"
         categories = sorted(set(oc.categories + sensitive_categories))
         events.log_event(rid, "output", oc.label, categories, action, ms(t))
-        events.log_chat_message(rid, conversation_id, username, "attempted_output", answer)
+        events.log_chat_message(rid, conversation_id, username, "attempted_output", sanitized_answer)
         # TODO(model owner): optional "safe retry" (regenerate with a stricter prompt) before blocking.
         return done("error" if oc.label == "error" else "blocked",
                     ERROR_MSG if oc.label == "error" else BLOCKED_OUTPUT, action, ic=ic,
