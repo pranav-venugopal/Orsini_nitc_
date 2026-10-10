@@ -247,8 +247,8 @@ def post_security_metamorphic_preview(
             continue
         try:
             variant = transform(prompt)
-            res = preview_engine.check(variant, stage="input")
-            decision = "BLOCK" if not res.allowed else ("REVIEW" if res.flagged else "ALLOW")
+            res = preview_engine.validate_input(variant)
+            decision = res.decision if res.decision in ("BLOCK", "REVIEW") else "ALLOW"
             results.append({
                 "transform": name,
                 "family": transform.family,
