@@ -254,7 +254,9 @@ def post_security_metamorphic_preview(
                 "family": transform.family,
                 "decision": decision,
             })
-        except Exception:
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
             results.append({
                 "transform": name,
                 "family": transform.family,
