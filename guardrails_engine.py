@@ -253,8 +253,10 @@ def _d_base64(t):
 def _d_base32(t):
     out = []
     for c in list(set(re.findall(r"\b[A-Z2-7]{16,}={0,6}", t)))[:10]:
+        s = c.rstrip("=")
+        s += "=" * (-len(s) % 8)
         try:
-            raw = base64.b32decode(c + "=" * (-len(c.rstrip("=")) % 8))
+            raw = base64.b32decode(s)
         except (binascii.Error, ValueError):
             continue
         if (d := _utf8(raw)):
