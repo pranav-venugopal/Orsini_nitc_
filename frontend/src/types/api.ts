@@ -25,11 +25,29 @@ export interface ChatResponse {
   check_skipped?: boolean;
 }
 
+export interface ToolRequest {
+  name: string;
+  args?: Record<string, any>;
+  conversation_id?: string | null;
+  approve?: boolean;
+}
+
+export interface ToolResponse {
+  request_id: string;
+  name: string;
+  status: "executed" | "blocked" | "review_required" | "error";
+  decision: string;
+  result?: any;
+  reason?: string | null;
+  message?: string | null;
+  categories: string[];
+}
+
 export interface SecurityEvent {
   event_id: string;
   timestamp: string;
   request_id: string;
-  stage: "input" | "output";
+  stage: "input" | "output" | "tool" | "context";
   label: Label;
   categories: string[];
   action: string;

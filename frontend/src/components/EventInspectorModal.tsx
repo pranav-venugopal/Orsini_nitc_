@@ -84,6 +84,9 @@ export default function EventInspectorModal({ event, onClose }: EventInspectorMo
   const isInputBlock =
     event.stage === "input" && (event.action === "blocked_input" || event.label === "unsafe");
 
+  const isToolStage = event.stage === "tool";
+  const isHallucinationBlock = event.action === "blocked_hallucination";
+
   const copyToClipboard = async (text: string, type: "prompt" | "output" | "reqId") => {
     try {
       await navigator.clipboard.writeText(text);
@@ -129,6 +132,10 @@ export default function EventInspectorModal({ event, onClose }: EventInspectorMo
                 className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium uppercase ${
                   isBypassedInputBlockedOutput
                     ? "border border-rose-500/30 bg-rose-500/10 text-rose-400"
+                    : event.action === "blocked_hallucination"
+                    ? "border border-rose-500/30 bg-rose-500/10 text-rose-400"
+                    : event.stage === "tool"
+                    ? "border border-amber-500/30 bg-amber-500/10 text-amber-400"
                     : isInputBlock
                     ? "border border-amber-500/30 bg-amber-500/10 text-amber-400"
                     : event.action === "passed"
@@ -139,6 +146,14 @@ export default function EventInspectorModal({ event, onClose }: EventInspectorMo
                 {isBypassedInputBlockedOutput ? (
                   <>
                     <ShieldAlert size={12} /> Bypassed Input · Blocked at Output
+                  </>
+                ) : event.action === "blocked_hallucination" ? (
+                  <>
+                    <ShieldAlert size={12} /> Factuality Guard · Contradiction
+                  </>
+                ) : event.stage === "tool" ? (
+                  <>
+                    <ShieldAlert size={12} /> Agent Tool Guard · {event.action}
                   </>
                 ) : isInputBlock ? (
                   <>
@@ -187,48 +202,76 @@ export default function EventInspectorModal({ event, onClose }: EventInspectorMo
               Multi-Layer Defense Pipeline Flow
             </p>
             <div className="grid gap-2 sm:grid-cols-3 sm:items-center sm:gap-4">
-              {/* Layer 1: Input Guard */}
+              {/* Layer 1: Input Guard or Tool Policy */}
               <div
                 className={`flex flex-col rounded-xl border p-3 ${
-                  isInputBlock
+                  isToolStage
+                    ? event.action === "blocked_tool"
+                      ? "border-rose-500/40 bg-rose-500/10 text-rose-300"
+                      : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                    : isInputBlock
                     ? "border-rose-500/40 bg-rose-500/10 text-rose-300"
                     : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
                 }`}
               >
                 <div className="flex items-center justify-between text-xs font-semibold uppercase">
-                  <span>Layer 1: Input Guard</span>
-                  {isInputBlock ? <ShieldX size={15} /> : <ShieldCheck size={15} />}
+                  <span>{isToolStage ? "Layer 1: ToolCallGuard" : "Layer 1: Input Guard"}</span>
+                  {isToolStage ? (
+                    event.action === "blocked_tool" ? <ShieldX size={15} /> : <ShieldCheck size={15} />
+                  ) : isInputBlock ? (
+                    <ShieldX size={15} />
+                  ) : (
+                    <ShieldCheck size={15} />
+                  )}
                 </div>
                 <p className="mt-1 text-xs">
-                  {isInputBlock
+                  {isToolStage
+                    ? event.action === "blocked_tool"
+                      ? "✕ Blocked (Unauthorized tool / parameter exploit)"
+                      : "✓ Allowed by Tool Policy"
+                    : isInputBlock
                     ? "✕ Blocked (Adversarial input detected)"
                     : "✓ Passed / Allowed (Bypassed to AI)"}
                 </p>
               </div>
 
-              {/* Layer 2: LLM Generation */}
+              {/* Layer 2: LLM Generation or Human Approval */}
               <div
                 className={`flex flex-col rounded-xl border p-3 ${
-                  isInputBlock
+                  isToolStage
+                    ? event.action === "review_required"
+                      ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                      : "border-cyan-500/40 bg-cyan-500/10 text-cyan-300"
+                    : isInputBlock
                     ? "border-edge/50 bg-panel/30 text-mute opacity-60"
                     : "border-cyan-500/40 bg-cyan-500/10 text-cyan-300"
                 }`}
               >
                 <div className="flex items-center justify-between text-xs font-semibold uppercase">
-                  <span>Layer 2: AI Model</span>
+                  <span>{isToolStage ? "Layer 2: Approval Gate" : "Layer 2: AI Model"}</span>
                   <ExternalLink size={15} />
                 </div>
                 <p className="mt-1 text-xs">
-                  {isInputBlock
+                  {isToolStage
+                    ? event.action === "review_required"
+                      ? "⚠️ Pending Human-in-the-Loop Admin Approval"
+                      : "✓ Approved for Execution"
+                    : isInputBlock
                     ? "— Skipped (Model not invoked)"
                     : "✓ Executed & Generated Response"}
                 </p>
               </div>
 
-              {/* Layer 3: Output Guard */}
+              {/* Layer 3: Output Guard or Execution Sandbox */}
               <div
                 className={`flex flex-col rounded-xl border p-3 ${
-                  isBypassedInputBlockedOutput
+                  isToolStage
+                    ? event.label === "safe"
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                      : "border-rose-500/50 bg-rose-500/15 text-rose-300"
+                    : isHallucinationBlock
+                    ? "border-rose-500/50 bg-rose-500/15 text-rose-300 shadow-sm shadow-rose-950/20"
+                    : isBypassedInputBlockedOutput
                     ? "border-rose-500/50 bg-rose-500/15 text-rose-300 shadow-sm shadow-rose-950/20"
                     : event.action === "redacted"
                     ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
@@ -238,8 +281,10 @@ export default function EventInspectorModal({ event, onClose }: EventInspectorMo
                 }`}
               >
                 <div className="flex items-center justify-between text-xs font-semibold uppercase">
-                  <span>Layer 3: Output Guard</span>
-                  {isBypassedInputBlockedOutput ? (
+                  <span>{isToolStage ? "Layer 3: Tool Sandbox" : "Layer 3: Output Guard"}</span>
+                  {isToolStage ? (
+                    event.label === "safe" ? <ShieldCheck size={15} /> : <ShieldAlert size={15} />
+                  ) : isHallucinationBlock || isBypassedInputBlockedOutput ? (
                     <ShieldAlert size={15} />
                   ) : event.action === "redacted" ? (
                     <AlertTriangle size={15} />
@@ -248,7 +293,13 @@ export default function EventInspectorModal({ event, onClose }: EventInspectorMo
                   )}
                 </div>
                 <p className="mt-1 text-xs font-medium">
-                  {isBypassedInputBlockedOutput
+                  {isToolStage
+                    ? event.label === "safe"
+                      ? "✓ Executed Safely"
+                      : "✕ Execution Prevented"
+                    : isHallucinationBlock
+                    ? "✕ FACTUALITY CONTRADICTION INTERCEPTED"
+                    : isBypassedInputBlockedOutput
                     ? "✕ INTERCEPTED & BLOCKED"
                     : event.action === "redacted"
                     ? "⚠️ PII Redacted"

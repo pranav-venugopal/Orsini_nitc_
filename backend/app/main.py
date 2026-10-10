@@ -7,8 +7,8 @@ from . import events
 from .auth import LoginRequest, LoginResponse, RegisterRequest, SessionUser, current_user, init_auth_db, login, register, require_admin
 from .config import settings
 from .middleware import RequestLimitsMiddleware
-from .pipeline import MOCK, model_diagnostics, run_chat
-from .schemas import ChatHistoryPage, ChatRequest, ChatResponse, EventsPage, Metrics
+from .pipeline import MOCK, model_diagnostics, run_chat, run_tool
+from .schemas import ChatHistoryPage, ChatRequest, ChatResponse, EventsPage, Metrics, ToolRequest, ToolResponse
 
 app = FastAPI(title="Secure AI Assistant API")
 app.add_middleware(RequestLimitsMiddleware)
@@ -51,6 +51,12 @@ def chat(req: ChatRequest, user: SessionUser = Depends(current_user)):
     if req.mode == "baseline" and user.role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Baseline mode is restricted to administrators.")
     return run_chat(req, user.username)
+
+
+@app.post("/agent/tool", response_model=ToolResponse)
+def agent_tool(req: ToolRequest, user: SessionUser = Depends(current_user)):
+    return run_tool(req, user)
+
 
 
 @app.get("/chat/history", response_model=ChatHistoryPage)

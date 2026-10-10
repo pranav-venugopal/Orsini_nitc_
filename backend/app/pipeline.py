@@ -12,10 +12,11 @@ if _root not in sys.path:
 from guardrails_engine import GuardrailsEngine, ToolCallGuard
 from hallucination import HallucinationResult, check_hallucination
 from prompts import CANARY, SYSTEM_PROMPT
+import tools
 from . import events
 from .config import settings
 from .redaction import redact_sensitive
-from .schemas import Check, ChatRequest, ChatResponse
+from .schemas import Check, ChatRequest, ChatResponse, ToolRequest, ToolResponse
 from .session_store import session_store
 
 REFUSAL = "I can't help with that request."
@@ -250,3 +251,59 @@ def run_chat(req: ChatRequest, username: str) -> ChatResponse:
     events.log_event(rid, "output", "safe", [], "passed", ms(t))
     return done("completed", sanitized_answer, "returned", ic=ic, oc=oc,
                 low_conf=h_res.low_confidence, unsupported=h_res.unsupported_claims, skipped=h_res.check_skipped)
+
+
+def run_tool(req: ToolRequest, user: Any) -> ToolResponse:
+    t0 = time.perf_counter()
+    rid = f"req_{uuid.uuid4().hex[:10]}"
+    cid = req.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
+    session = session_store.get(cid)
+
+    # 1. Require admin approval for send_email
+    if req.name == "send_email":
+        user_role = getattr(user, "role", None)
+        if not (user_role == "admin" and req.approve is True):
+            latency = int((time.perf_counter() - t0) * 1000)
+            events.log_event(rid, "tool", "review", ["approval_required"], "review_required", latency)
+            return ToolResponse(
+                request_id=rid,
+                name=req.name,
+                status="review_required",
+                decision="REVIEW",
+                reason="approval_required",
+                message="send_email requires explicit admin approval (approve=true)",
+                categories=["approval_required"],
+            )
+
+    # 2. Validate tool call through engine
+    result = engine.validate_tool_call(req.name, req.args, session=session)
+    session_store.save(cid, session)
+    latency = int((time.perf_counter() - t0) * 1000)
+
+    label = "safe" if result.allowed else ("error" if "system" in result.categories else "unsafe")
+    action = "passed" if result.allowed else ("error" if label == "error" else "blocked_tool")
+    events.log_event(rid, "tool", label, result.categories, action, latency)
+
+    if not result.allowed:
+        return ToolResponse(
+            request_id=rid,
+            name=req.name,
+            status="blocked",
+            decision=result.decision,
+            reason=result.reason,
+            message=result.message or f"Tool call blocked: {result.reason}",
+            categories=result.categories,
+        )
+
+    # 3. ONLY execute if decision is ALLOW
+    tool_output = tools.execute_tool(req.name, req.args)
+    return ToolResponse(
+        request_id=rid,
+        name=req.name,
+        status="executed",
+        decision=result.decision,
+        result=tool_output,
+        reason=result.reason,
+        categories=result.categories,
+    )
+
