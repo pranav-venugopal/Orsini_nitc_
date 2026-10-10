@@ -4,7 +4,7 @@ import time
 import uuid
 from typing import Any
 
-from guardrails_engine import GuardrailsEngine
+from guardrails_engine import GuardrailsEngine, ToolCallGuard
 from prompts import CANARY, SYSTEM_PROMPT
 from . import events
 from .config import settings
@@ -40,6 +40,13 @@ engine = GuardrailsEngine(
         use_llama_guard=False,  # Offline/mock default; guard.classify provides the model-based check
         canaries=[CANARY],
         system_prompt=SYSTEM_PROMPT,
+    )
+)
+engine.add(
+    ToolCallGuard(
+        allowed_tools={"calculator", "fetch_url", "send_email"},
+        allowed_domains={"example.com", "api.example.com"},
+        max_calls_per_session=10,
     )
 )
 
@@ -106,13 +113,17 @@ def run_chat(req: ChatRequest, username: str) -> ChatResponse:
     persisted_message, _ = redact_sensitive(req.message)
     events.log_chat_message(rid, conversation_id, username, "user", persisted_message)
 
+    valid_context: list[str] = []
+    dropped_context: list[str] = []
+
     def ms(since: float) -> int:
         return int((time.perf_counter() - since) * 1000)
 
-    def done(status, answer, action, ic=None, oc=None):
+    def done(status, answer, action, ic=None, oc=None, dropped=None):
         resp = ChatResponse(request_id=rid, conversation_id=conversation_id, status=status, answer=answer,
                              input_check=ic, output_check=oc, action=action, latency_ms=ms(t0),
-                             mode=req.mode, mock_models=MOCK)
+                             mode=req.mode, mock_models=MOCK,
+                             dropped_context=dropped if dropped is not None else dropped_context)
         events.log_request(rid, status, req.mode, resp.latency_ms)
         persisted_answer, _ = redact_sensitive(answer)
         events.log_chat_message(rid, conversation_id, username, "assistant", persisted_answer)
@@ -126,6 +137,19 @@ def run_chat(req: ChatRequest, username: str) -> ChatResponse:
             return done("error", ERROR_MSG, "error")
 
     t = time.perf_counter()
+
+    # Validate context documents before they enter the prompt
+    if req.context:
+        for doc in req.context:
+            c_res = engine.validate_context(doc, history=history, session=session)
+            if not c_res.allowed:
+                dropped_context.append(doc)
+                events.log_event(rid, "context", "unsafe", c_res.categories, "blocked_context", ms(t))
+                events.log_request(rid, "blocked", req.mode, ms(t0))
+                session_store.save(conversation_id, session)
+                return done("blocked", REFUSAL, "blocked_context", ic=Check(label="unsafe", categories=c_res.categories), dropped=dropped_context)
+            else:
+                valid_context.append(doc)
 
     # 1. Input stage: Run GuardrailsEngine input validation (de-obfuscation, injection, PII, etc.)
     r_in = engine.validate_input(req.message, history=history, session=session)
@@ -141,7 +165,11 @@ def run_chat(req: ChatRequest, username: str) -> ChatResponse:
                     ic=Check(label=ic_label, categories=r_in.categories))
 
     # Pattern / PII sanitization and model guard check
-    sanitized_message, input_sensitive_categories = redact_sensitive(req.message)
+    effective_message = req.message
+    if valid_context:
+        effective_message = "Context:\n" + "\n---\n".join(valid_context) + f"\n\nQuestion: {req.message}"
+
+    sanitized_message, input_sensitive_categories = redact_sensitive(effective_message)
     ic = _check(sanitized_message, "user")
     if ic.label != "safe":
         session_store.save(conversation_id, session)

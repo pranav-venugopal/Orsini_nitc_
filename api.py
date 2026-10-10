@@ -20,8 +20,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
-from guardrails_engine import GuardrailsEngine, LlamaGuardClassifier, Session
+from guardrails_engine import GuardrailsEngine, LlamaGuardClassifier, Session, ToolCallGuard
 from prompts import CANARY, SYSTEM_PROMPT
+from tools import execute_tool
 
 from app import events
 from app.auth import (
@@ -86,6 +87,13 @@ engine = GuardrailsEngine(
         system_prompt=SYSTEM_PROMPT,
     )
 )
+engine.add(
+    ToolCallGuard(
+        allowed_tools={"calculator", "fetch_url", "send_email"},
+        allowed_domains={"example.com", "api.example.com"},
+        max_calls_per_session=10,
+    )
+)
 
 REFUSAL = "Sorry, I can't help with that request."
 
@@ -121,6 +129,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10_000)
     conversation_id: str | None = None
     mode: str = "guarded"
+    context: list[str] | None = None
 
 
 class ChatResponse(BaseModel):
@@ -134,12 +143,31 @@ class ChatResponse(BaseModel):
     latency_ms: int
     mode: str
     mock_models: bool
+    dropped_context: list[str] = Field(default_factory=list)
     # Legacy gateway fields are retained for API consumers that predate the UI.
     response: str
     input_decision: str
     output_decision: str | None = None
     model: str
     inference: str
+
+
+class ToolRequest(BaseModel):
+    name: str
+    args: dict[str, Any] = Field(default_factory=dict)
+    conversation_id: str | None = None
+    approve: bool = False
+
+
+class ToolResponse(BaseModel):
+    request_id: str
+    name: str
+    status: str
+    decision: str
+    result: Any | None = None
+    reason: str | None = None
+    message: str | None = None
+    categories: list[str] = Field(default_factory=list)
 
 
 def _safety_classifier() -> LlamaGuardClassifier:
@@ -217,9 +245,45 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
     persisted_user_msg, _ = redact_sensitive(req.message)
     events.log_chat_message(rid, conversation_id, username, "user", persisted_user_msg)
 
+    # Validate context documents before they enter the prompt
+    valid_context: list[str] = []
+    dropped_context: list[str] = []
+    if req.context:
+        for doc in req.context:
+            c_res = engine.validate_context(doc, history=history, session=session)
+            if not c_res.allowed:
+                dropped_context.append(doc)
+                events.log_event(rid, "context", "unsafe", c_res.categories, "blocked_context", 0)
+                events.log_request(rid, "blocked", req.mode, 0)
+                session_store.save(conversation_id, session)
+                return ChatResponse(
+                    request_id=rid,
+                    conversation_id=conversation_id,
+                    status="blocked",
+                    answer=REFUSAL,
+                    input_check={"label": "unsafe", "categories": c_res.categories},
+                    output_check=None,
+                    action="blocked_context",
+                    latency_ms=int((time.perf_counter() - t0) * 1000),
+                    mode=req.mode,
+                    mock_models=False,
+                    dropped_context=dropped_context,
+                    response=REFUSAL,
+                    input_decision=c_res.decision,
+                    output_decision=None,
+                    model=getattr(llm, "model_id", MODEL_ID),
+                    inference=INFERENCE_MODE,
+                )
+            else:
+                valid_context.append(doc)
+
+    effective_message = req.message
+    if valid_context:
+        effective_message = "Context:\n" + "\n---\n".join(valid_context) + f"\n\nQuestion: {req.message}"
+
     try:
         response, input_result, output_result = engine.protect(
-            user_text=req.message,
+            user_text=effective_message,
             llm=llm.generate,
             history=history,
             session=session,
@@ -280,6 +344,7 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
             latency_ms=latency,
             mode=req.mode,
             mock_models=False,
+            dropped_context=dropped_context,
             response=response,
             input_decision=input_result.decision,
             output_decision=output_result.decision if output_result is not None else None,
@@ -293,6 +358,64 @@ def chat(req: ChatRequest, user: SessionUser | None = Depends(optional_user)) ->
         events.log_event(rid, "input", "error", ["system"], "error", latency)
         events.log_request(rid, "error", req.mode, latency)
         raise HTTPException(status_code=500, detail="The gateway could not process this request.") from None
+
+
+@app.post("/agent/tool", response_model=ToolResponse)
+def agent_tool(
+    req: ToolRequest,
+    user: SessionUser = Depends(current_user),
+) -> ToolResponse:
+    t0 = time.perf_counter()
+    rid = f"req_{uuid.uuid4().hex[:10]}"
+    cid = req.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
+    session = session_store.get(cid)
+
+    # 1. Require admin approval for send_email
+    if req.name == "send_email":
+        if not (user.role == "admin" and req.approve is True):
+            latency = int((time.perf_counter() - t0) * 1000)
+            events.log_event(rid, "tool", "review", ["approval_required"], "review_required", latency)
+            return ToolResponse(
+                request_id=rid,
+                name=req.name,
+                status="review_required",
+                decision="REVIEW",
+                reason="approval_required",
+                message="send_email requires explicit admin approval (approve=true)",
+                categories=["approval_required"],
+            )
+
+    # 2. Validate tool call through engine
+    result = engine.validate_tool_call(req.name, req.args, session=session)
+    session_store.save(cid, session)
+    latency = int((time.perf_counter() - t0) * 1000)
+
+    label = "safe" if result.allowed else ("error" if "system" in result.categories else "unsafe")
+    action = "passed" if result.allowed else ("error" if label == "error" else "blocked_tool")
+    events.log_event(rid, "tool", label, result.categories, action, latency)
+
+    if not result.allowed:
+        return ToolResponse(
+            request_id=rid,
+            name=req.name,
+            status="blocked",
+            decision=result.decision,
+            reason=result.reason,
+            message=result.message or f"Tool call blocked: {result.reason}",
+            categories=result.categories,
+        )
+
+    # 3. ONLY execute if decision is ALLOW
+    tool_output = execute_tool(req.name, req.args)
+    return ToolResponse(
+        request_id=rid,
+        name=req.name,
+        status="executed",
+        decision=result.decision,
+        result=tool_output,
+        reason=result.reason,
+        categories=result.categories,
+    )
 
 
 @app.get("/chat/history", response_model=ChatHistoryPage)
